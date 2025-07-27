@@ -4008,6 +4008,7 @@ Dictionary Steam::sendMessageToConnection(uint32 connection_handle, const Packed
 // function, you must first allocate a message object using ISteamNetworkingUtils::AllocateMessage. (Do not declare one on the
 // stack or allocate your own.)
 // Current does not compile on Windows but does on Linux
+// TODO: Test this code on windows.
 Array Steam::sendMessages(Array messages, uint32 connection_handle, int flags) {
  	Array result;
  	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, result, "[STEAM SERVER] Networking Sockets class not found when calling: sendMessages");
