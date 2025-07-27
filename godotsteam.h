@@ -557,7 +557,7 @@ public:
 //	Dictionary receivedRelayAuthTicket();	<------ Uses datagram relay structs which were removed from base SDK
 	void resetIdentity(uint64_t remote_steam_id);
 	void runNetworkingCallbacks();
-	Array sendMessages(Array messages, uint32 connection_handle, int flags); //TODO: Test this function to see if it works proper now
+	Array sendMessages(Array messages, uint32 connection_handle, int flags);
 	Dictionary sendMessageToConnection(uint32 connection_handle, const PackedByteArray data, int flags);
 	Dictionary setCertificate(const PackedByteArray &certificate);
 	bool setConnectionPollGroup(uint32 connection_handle, uint32 poll_group);

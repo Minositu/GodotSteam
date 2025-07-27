@@ -25,6 +25,8 @@
 //===========================================================================//
 
 // Turn off MSVC-only warning about strcpy
+#include "core/string/print_string.h"
+#include "steam/isteaminventory.h"
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS 1
 #pragma warning(disable : 4996)
@@ -2927,15 +2929,16 @@ bool Steam::setPropertyString(uint64_t item_id, const String &name, const String
 void Steam::startPurchase(const PackedInt64Array items, const PackedInt32Array quantity) {
 	ERR_FAIL_COND_MSG(SteamInventory() == nullptr, "[STEAM] Inventory class not found when calling: startPurchase");
 	uint32 total_items = items.size();
-	SteamItemDef_t *purchases = new SteamItemDef_t[total_items];
+	Vector<SteamItemDef_t> purchases;
+	purchases.resize(total_items);
+
 	for (uint32 i = 0; i < total_items; i++) {
-		purchases[i] = items[i];
+		purchases.write[i] = items[i];
 	}
 
 	uint32_t *these_quantities = (uint32*) quantity.ptr();
-	SteamAPICall_t api_call = SteamInventory()->StartPurchase(purchases, these_quantities, total_items);
+	SteamAPICall_t api_call = SteamInventory()->StartPurchase(purchases.ptr(), these_quantities, total_items);
 	callResultStartPurchase.Set(api_call, this, &Steam::inventory_start_purchase_result);
-	delete[] purchases;
 }
 
 // Starts a transaction request to update dynamic properties on items for the current user. This call is rate-limited by user, so
@@ -3301,7 +3304,7 @@ static Vector<MatchMakingKeyValuePair_t> filters_array_to_vector(const Array &fi
 		String key = pair[0];
 		String value = pair[1];
 
-		filters_vector.push_back(MatchMakingKeyValuePair_t(key.utf8().get_data(), value.utf8().get_data()));
+		filters_vector.write[i] = MatchMakingKeyValuePair_t(key.utf8().get_data(), value.utf8().get_data());
 	}
 
 	return filters_vector;
@@ -3404,7 +3407,7 @@ uint64_t Steam::requestFavoritesServerList(uint32 app_id, Array filters) {
 
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestFriendsServerList(uint32 app_id, Array filters) {
-	server_list_request = 0;
+	server_list_request = nullptr;
 	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestFriendsServerList");
 	auto filters_storage = filters_array_to_vector(filters);
 	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
@@ -3414,7 +3417,7 @@ uint64_t Steam::requestFriendsServerList(uint32 app_id, Array filters) {
 
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestHistoryServerList(uint32 app_id, Array filters) {
-	server_list_request = 0;
+	server_list_request = nullptr;
 	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestHistoryServerList");
 	auto filters_storage = filters_array_to_vector(filters);
 	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
@@ -3424,7 +3427,7 @@ uint64_t Steam::requestHistoryServerList(uint32 app_id, Array filters) {
 
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestInternetServerList(uint32 app_id, Array filters) {
-	server_list_request = 0;
+	server_list_request = nullptr;
 	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestInternetServerList");
 	auto filters_storage = filters_array_to_vector(filters);
 	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
@@ -3434,7 +3437,7 @@ uint64_t Steam::requestInternetServerList(uint32 app_id, Array filters) {
 
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestLANServerList(uint32 app_id) {
-	server_list_request = 0;
+	server_list_request = nullptr;
 	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestLANServerList");
 	server_list_request = SteamMatchmakingServers()->RequestLANServerList((AppId_t)app_id, server_list_response);
 	return (uint64)server_list_request;
@@ -3442,7 +3445,7 @@ uint64_t Steam::requestLANServerList(uint32 app_id) {
 
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestSpectatorServerList(uint32 app_id, Array filters) {
-	server_list_request = 0;
+	server_list_request = nullptr;
 	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestSpectatorServerList");
 	auto filters_storage = filters_array_to_vector(filters);
 	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
@@ -4019,7 +4022,8 @@ Array Steam::sendMessages(Array messages, uint32 connection_handle, int flags) {
  		network_message->m_conn = (HSteamNetConnection)connection_handle;
  		network_message->m_nFlags = flags;
 
-		messages_payload.push_back(network_message);
+		printf("Pushed back, %p", network_message);
+		messages_payload.write[m] = network_message;
  	}
 
  	int64 *message_num_or_result = new int64[messages.size()];
@@ -4029,7 +4033,7 @@ Array Steam::sendMessages(Array messages, uint32 connection_handle, int flags) {
  		result.append( (int)message_num_or_result[i] );
  	}
 
-	for (int i = 0; i < messages_payload.size(); i++ ) { //TODO: Ensure this is being released proper
+	for (int i = 0; i < messages_payload.size(); i++ ) {
  		messages_payload[i]->Release();
  	}
 
@@ -9908,7 +9912,7 @@ void Steam::_bind_methods() {
 //	ClassDB::bind_method("receivedRelayAuthTicket", &Steam::receivedRelayAuthTicket);	<------ Uses datagram relay structs which were removed from base SDK
 	ClassDB::bind_method(D_METHOD("resetIdentity", "remote_steam_id"), &Steam::resetIdentity);
 	ClassDB::bind_method("runNetworkingCallbacks", &Steam::runNetworkingCallbacks);
-//	ClassDB::bind_method(D_METHOD("sendMessages", "data", "connection_handle", "flags"), &Steam::sendMessages);		<------ Currently does not compile on Windows but does on Linux
+	ClassDB::bind_method(D_METHOD("sendMessages", "data", "connection_handle", "flags"), &Steam::sendMessages);
 	ClassDB::bind_method(D_METHOD("sendMessageToConnection", "connection_handle", "data", "flags"), &Steam::sendMessageToConnection);
 	ClassDB::bind_method(D_METHOD("setCertificate", "certificate"), &Steam::setCertificate);
 	ClassDB::bind_method(D_METHOD("setConnectionPollGroup", "connection_handle", "poll_group"), &Steam::setConnectionPollGroup);
