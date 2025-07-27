@@ -903,9 +903,8 @@ Dictionary Steam::getClanActivityCounts(uint64_t clan_id) {
 	int online = 0;
 	int ingame = 0;
 	int chatting = 0;
-	bool success = SteamFriends()->GetClanActivityCounts(clan, &online, &ingame, &chatting);
 	// Add these to the dictionary if successful
-	if (success) {
+	if (SteamFriends()->GetClanActivityCounts(clan, &online, &ingame, &chatting)) {
 		activity["clan"] = clan_id;
 		activity["online"] = online;
 		activity["ingame"] = ingame;
@@ -1068,9 +1067,8 @@ Dictionary Steam::getFriendGamePlayed(uint64_t steam_id) {
 	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, friend_game, "[STEAM] Friends class not found when calling: getFriendGamePlayed");
 	FriendGameInfo_t game_info;
 	CSteamID user_id = (uint64)steam_id;
-	bool success = SteamFriends()->GetFriendGamePlayed(user_id, &game_info);
 	// If successful
-	if (success) {
+	if (SteamFriends()->GetFriendGamePlayed(user_id, &game_info)) {
 		// Is there a valid lobby?
 		if (game_info.m_steamIDLobby.IsValid()) {
 			friend_game["id"] = game_info.m_gameID.AppID();
@@ -1236,21 +1234,22 @@ void Steam::getPlayerAvatar(int size, uint64_t steam_id) {
 	if (steam_id == 0) {
 		steam_id = SteamUser()->GetSteamID().ConvertToUint64();
 	}
-
 	uint32_t handle = -2;
-	if (size == 1) {
-		handle = getSmallFriendAvatar(steam_id);
-		size = 32;
+	switch(size)
+	{
+		case 1: //Small
+			handle = getSmallFriendAvatar(steam_id);
+			size = 32;
+		break;
+		case 2: //Medium
+			handle = getMediumFriendAvatar(steam_id);
+			size = 64;
+		break;
+		default: //Large
+			handle = getLargeFriendAvatar(steam_id);
+			size = 184;
+		break;
 	}
-	else if (size == 2) {
-		handle = getMediumFriendAvatar(steam_id);
-		size = 64;
-	}
-	else {
-		handle = getLargeFriendAvatar(steam_id);
-		size = 184;
-	}
-
 	AvatarImageLoaded_t avatar_data;
 	CSteamID avatar_id = (uint64)steam_id;
 	avatar_data.m_steamID = avatar_id;
@@ -2300,8 +2299,7 @@ Array Steam::getDeviceBindingRevision(uint64_t input_handle) {
 	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, revision, "[STEAM] Input not found when calling: getDeviceBindingRevision");
 	int major = 0;
 	int minor = 0;
-	bool success = SteamInput()->GetDeviceBindingRevision((InputHandle_t)input_handle, &major, &minor);
-	if (success) {
+	if (SteamInput()->GetDeviceBindingRevision((InputHandle_t)input_handle, &major, &minor)) {
 		revision.append(major);
 		revision.append(minor);
 	}
@@ -3058,8 +3056,7 @@ Dictionary Steam::getAllLobbyData(uint64_t steam_lobby_id) {
 	char key[MAX_LOBBY_KEY_LENGTH];
 	char value[CHAT_METADATA_MAX];
 	for (int i = 0; i < data_count; i++) {
-		bool success = SteamMatchmaking()->GetLobbyDataByIndex(lobby_id, i, key, MAX_LOBBY_KEY_LENGTH, value, CHAT_METADATA_MAX);
-		if (success) {
+		if (SteamMatchmaking()->GetLobbyDataByIndex(lobby_id, i, key, MAX_LOBBY_KEY_LENGTH, value, CHAT_METADATA_MAX)) {
 			Dictionary data;
 			data["index"] = i;
 			data["key"] = key;
@@ -4008,34 +4005,37 @@ Dictionary Steam::sendMessageToConnection(uint32 connection_handle, const Packed
 // function, you must first allocate a message object using ISteamNetworkingUtils::AllocateMessage. (Do not declare one on the
 // stack or allocate your own.)
 // Current does not compile on Windows but does on Linux
-// Array Steam::sendMessages(Array messages, uint32 connection_handle, int flags) {
-// 	Array result;
-// 	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, result, "[STEAM SERVER] Networking Sockets class not found when calling: sendMessages");
+Array Steam::sendMessages(Array messages, uint32 connection_handle, int flags) {
+ 	Array result;
+ 	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, result, "[STEAM SERVER] Networking Sockets class not found when calling: sendMessages");
 
-// 	int total_messages = messages.size();
-// 	SteamNetworkingMessage_t *messages_payload[total_messages];
+ 	int total_messages = messages.size();
+ 	Vector<SteamNetworkingMessage_t*> messages_payload;
+	messages_payload.resize(total_messages);
 
-// 	for(int m = 0; m < total_messages; m++) {
-// 		SteamNetworkingMessage_t *network_message = SteamNetworkingUtils()->AllocateMessage(sizeof(messages[m]));
-// 		network_message->m_pData = messages[m];
-// 		network_message->m_conn = (HSteamNetConnection)connection_handle;
-// 		network_message->m_nFlags = flags;
+ 	for(int m = 0; m < total_messages; m++) {
+ 		SteamNetworkingMessage_t *network_message = SteamNetworkingUtils()->AllocateMessage(sizeof(messages[m]));
+ 		network_message->m_pData = messages[m];
+ 		network_message->m_conn = (HSteamNetConnection)connection_handle;
+ 		network_message->m_nFlags = flags;
 
-// 		messages_payload[m] = network_message;
-// 		// Can or should we release this here?
-// 		network_message->Release();
-// 	}
+		messages_payload.push_back(network_message);
+ 	}
 
-// 	int64 *message_num_or_result = new int64[messages.size()];
-// 	SteamNetworkingSockets()->SendMessages(total_messages, messages_payload, message_num_or_result);
+ 	int64 *message_num_or_result = new int64[messages.size()];
+ 	SteamNetworkingSockets()->SendMessages(total_messages, messages_payload.ptr(), message_num_or_result);
 
-// 	for (int i = 0; i < messages.size(); i++ ) {
-// 		result.append( (int)message_num_or_result[i] );
-// 	}
+ 	for (int i = 0; i < messages.size(); i++ ) {
+ 		result.append( (int)message_num_or_result[i] );
+ 	}
 
-// 	delete[] message_num_or_result;
-// 	return result;
-// }
+	for (int i = 0; i < messages_payload.size(); i++ ) { //TODO: Ensure this is being released proper
+ 		messages_payload[i]->Release();
+ 	}
+
+ 	delete[] message_num_or_result;
+ 	return result;
+}
 
 // Flush any messages waiting on the Nagle timer and send them at the next transmission opportunity (often that means right now).
 int Steam::flushMessagesOnConnection(uint32 connection_handle) {
@@ -4387,10 +4387,8 @@ Dictionary Steam::getCertificateRequest() {
 Dictionary Steam::setCertificate(const PackedByteArray &certificate) {
 	Dictionary certificate_data;
 	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, certificate_data, "[STEAM] Networking Sockets class not found when calling: setCertificate");
-	bool success = false;
 	SteamNetworkingErrMsg error_message;
-
-	success = SteamNetworkingSockets()->SetCertificate((void *)certificate.ptr(), certificate.size(), error_message);
+	bool success = SteamNetworkingSockets()->SetCertificate((void *)certificate.ptr(), certificate.size(), error_message);
 	if (success) {
 		certificate_data["response"] = success;
 		certificate_data["error"] = error_message;
@@ -5863,8 +5861,7 @@ String Steam::getQueryUGCMetadata(uint64_t query_handle, uint32 index) {
 	String query_ugc_metadata = "";
 	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, query_ugc_metadata, "[STEAM] UGC class not found when calling: getQueryUGCMetadata");
 	char ugc_metadata[5000 + 1]{};
-	bool success = SteamUGC()->GetQueryUGCMetadata((UGCQueryHandle_t)query_handle, index, ugc_metadata, 5000);
-	if (success) {
+	if (SteamUGC()->GetQueryUGCMetadata((UGCQueryHandle_t)query_handle, index, ugc_metadata, 5000)) {
 		query_ugc_metadata = ugc_metadata;
 	}
 	return query_ugc_metadata;
@@ -5894,8 +5891,7 @@ String Steam::getQueryUGCPreviewURL(uint64_t query_handle, uint32 index) {
 	String query_ugc_preview_url = "";
 	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, query_ugc_preview_url, "[STEAM] UGC class not found when calling: getQueryUGCPreviewURL");
 	char url[256 + 1]{};
-	bool success = SteamUGC()->GetQueryUGCPreviewURL((UGCQueryHandle_t)query_handle, index, url, 256);
-	if (success) {
+	if (SteamUGC()->GetQueryUGCPreviewURL((UGCQueryHandle_t)query_handle, index, url, 256)) {
 		query_ugc_preview_url = url;
 	}
 	return query_ugc_preview_url;
@@ -5906,8 +5902,7 @@ Dictionary Steam::getQueryUGCResult(uint64_t query_handle, uint32 index) {
 	Dictionary ugc_result;
 	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, ugc_result, "[STEAM] UGC class not found when calling: getQueryUGCResult");
 	SteamUGCDetails_t query_details;
-	bool success = SteamUGC()->GetQueryUGCResult((UGCQueryHandle_t)query_handle, index, &query_details);
-	if (success) {
+	if (SteamUGC()->GetQueryUGCResult((UGCQueryHandle_t)query_handle, index, &query_details)) {
 		ugc_result["result"] = (uint64_t)query_details.m_eResult;
 		ugc_result["file_id"] = (uint64_t)query_details.m_nPublishedFileId;
 		ugc_result["file_type"] = (uint64_t)query_details.m_eFileType;
@@ -7532,10 +7527,9 @@ void Steam::avatar_image_loaded(AvatarImageLoaded_t *avatar_data) {
 
 // Called when a Steam group activity has received.
 void Steam::clan_activity_downloaded(DownloadClanActivityCountsResult_t *call_data) {
-	bool success = call_data->m_bSuccess;
 	// Set up the dictionary to populate
 	Dictionary activity;
-	if (success) {
+	if (call_data->m_bSuccess) {
 		int online = 0;
 		int in_game = 0;
 		int chatting = 0;
