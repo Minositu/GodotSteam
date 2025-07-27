@@ -31,13 +31,8 @@
 #pragma warning(disable : 4828)
 #endif
 
-
 // Include GodotSteam header
 #include "godotsteam.h"
-
-// Include some system headers
-#include "fstream"
-#include "vector"
 
 
 Steam *Steam::singleton = nullptr;
@@ -234,41 +229,49 @@ Steam::Steam() :
 // These arrays contain dictionaries of { NetworkingConfigValue enum : value for config }
 const SteamNetworkingConfigValue_t *Steam::convert_config_options(Dictionary config_options) {
 	uint32 options_size = config_options.size();
-	SteamNetworkingConfigValue_t *option_array = new SteamNetworkingConfigValue_t[options_size];
-
-	if (options_size > 0) {
-		for (uint32 i = 0; i < options_size; i++) {
-			SteamNetworkingConfigValue_t this_option;
-			int sent_option = (int)config_options.keys()[i];
-
-			// Get the configuration value.
-			// This is a convoluted way of doing it but can't seem to cast the value as an enum so here we are.
-			ESteamNetworkingConfigValue this_value = ESteamNetworkingConfigValue((int)sent_option);
-			Variant::Type value_type = config_options[sent_option].get_type();
-			if (value_type == Variant::INT) {
-				if (sent_option == NETWORKING_CONFIG_CONNECTION_USER_DATA) {
-					this_option.SetInt64(this_value, config_options[sent_option]);
-				} 
-				else {
-					this_option.SetInt32(this_value, config_options[sent_option]);
-				}
-			}
-			else if (value_type == Variant::FLOAT) {
-				this_option.SetFloat(this_value, config_options[sent_option]);
-			}
-			else if (value_type == Variant::STRING) {
-				this_option.SetString(this_value, String(config_options[sent_option]).utf8().get_data());
-			}
-			else {
-				Object *this_pointer;
-				this_pointer = config_options[sent_option];
-				this_option.SetPtr(this_value, this_pointer);
-			}
-			option_array[i] = this_option;
-		}
+	// If options size is zero, it's better to return a nullptr, since new array[0] returns a pointer to a memory block with zero memory allocated.
+	if (options_size == 0) {
+		return nullptr;
 	}
+
+	SteamNetworkingConfigValue_t *option_array = new SteamNetworkingConfigValue_t[options_size];
+	Array keys = config_options.keys();
+
+	for (uint32 i = 0; i < options_size; i++) {
+		int sent_option = int(keys[i]);
+		ESteamNetworkingConfigValue this_value = ESteamNetworkingConfigValue(sent_option);
+
+		Variant option_value = config_options[sent_option];
+		Variant::Type value_type = option_value.get_type();
+
+		SteamNetworkingConfigValue_t this_option;
+
+		switch (value_type) {
+			case Variant::INT:
+				if (sent_option == NETWORKING_CONFIG_CONNECTION_USER_DATA) {
+					this_option.SetInt64(this_value, int64_t(option_value));
+				} else {
+					this_option.SetInt32(this_value, int32_t(option_value));
+				}
+				break;
+			case Variant::FLOAT:
+				this_option.SetFloat(this_value, float(option_value));
+				break;
+			case Variant::STRING:
+				this_option.SetString(this_value, String(option_value).utf8().get_data());
+				break;
+			default:
+				Object *ptr = option_value;
+				this_option.SetPtr(this_value, ptr);
+				break;
+		}
+
+		option_array[i] = this_option;
+	}
+
 	return option_array;
 }
+
 
 // Creating a Steam ID for internal use
 CSteamID Steam::createSteamID(uint64_t steam_id, AccountType account_type) {
@@ -282,30 +285,35 @@ CSteamID Steam::createSteamID(uint64_t steam_id, AccountType account_type) {
 
 // A helper function for creating game server dictionaries
 Dictionary Steam::gameServerItemToDictionary(gameserveritem_t *server_item) {
-	Dictionary game_server;
-	if (server_item != NULL) {
-		game_server["name"] = server_item->GetName();
-		game_server["connection_address"] = server_item->m_NetAdr.GetConnectionAddressString();
-		game_server["query_address"] = server_item->m_NetAdr.GetQueryAddressString();
-		game_server["ping"] = server_item->m_nPing;
-		game_server["success_response"] = server_item->m_bHadSuccessfulResponse;
-		game_server["no_refresh"] = server_item->m_bDoNotRefresh;
-		game_server["game_dir"] = server_item->m_szGameDir;
-		game_server["map"] = server_item->m_szMap;
-		game_server["description"] = server_item->m_szGameDescription;
-		game_server["app_id"] = server_item->m_nAppID;
-		game_server["players"] = server_item->m_nPlayers;
-		game_server["max_players"] = server_item->m_nMaxPlayers;
-		game_server["bot_players"] = server_item->m_nBotPlayers;
-		game_server["password"] = server_item->m_bPassword;
-		game_server["secure"] = server_item->m_bSecure;
-		game_server["last_played"] = server_item->m_ulTimeLastPlayed;
-		game_server["server_version"] = server_item->m_nServerVersion;
-		game_server["game_tags"] = server_item->m_szGameTags;
-		game_server["steam_id"] = (uint64_t)server_item->m_steamID.ConvertToUint64();
+	if (server_item == nullptr) {
+		return Dictionary{};
 	}
+
+	Dictionary game_server;
+
+	game_server["name"] = server_item->GetName();
+	game_server["connection_address"] = server_item->m_NetAdr.GetConnectionAddressString();
+	game_server["query_address"] = server_item->m_NetAdr.GetQueryAddressString();
+	game_server["ping"] = server_item->m_nPing;
+	game_server["success_response"] = server_item->m_bHadSuccessfulResponse;
+	game_server["no_refresh"] = server_item->m_bDoNotRefresh;
+	game_server["game_dir"] = server_item->m_szGameDir;
+	game_server["map"] = server_item->m_szMap;
+	game_server["description"] = server_item->m_szGameDescription;
+	game_server["app_id"] = server_item->m_nAppID;
+	game_server["players"] = server_item->m_nPlayers;
+	game_server["max_players"] = server_item->m_nMaxPlayers;
+	game_server["bot_players"] = server_item->m_nBotPlayers;
+	game_server["password"] = server_item->m_bPassword;
+	game_server["secure"] = server_item->m_bSecure;
+	game_server["last_played"] = server_item->m_ulTimeLastPlayed;
+	game_server["server_version"] = server_item->m_nServerVersion;
+	game_server["game_tags"] = server_item->m_szGameTags;
+	game_server["steam_id"] = uint64_t(server_item->m_steamID.ConvertToUint64());
+
 	return game_server;
 }
+
 
 // Get the Steam singleton, obviously
 Steam *Steam::get_singleton() {
@@ -325,7 +333,7 @@ uint32 Steam::getIPFromString(String ip_string) {
 
 	SteamNetworkingIPAddr this_address;
 	this_address.Clear();
-	
+
 	if (this_address.ParseString(ip_string.utf8().get_data())) {
 		ip_address = this_address.GetIPv4();
 	}
@@ -358,7 +366,7 @@ SteamNetworkingIPAddr Steam::getSteamIPFromInt(uint32 ip_integer) {
 SteamNetworkingIPAddr Steam::getSteamIPFromString(String ip_string) {
 	SteamNetworkingIPAddr this_address;
 	this_address.Clear();
-	
+
 	if (this_address.ParseString(ip_string.utf8().get_data())) {
 		this_address.GetIPv4();
 	}
@@ -375,16 +383,16 @@ String Steam::getStringFromIP(uint32 ip_integer) {
 	if (ip_integer > 0) {
 		this_address.SetIPv4(ip_integer, 0);
 		char this_ip[SteamNetworkingIPAddr::k_cchMaxString];
-		this_address.ToString(this_ip, std::size(this_ip), false);
+		this_address.ToString(this_ip, SteamNetworkingIPAddr::k_cchMaxString, false);
 		ip_address = String(this_ip);
 	}
 	return ip_address;
 }
 
 // Convert a Steam IP Address to a string
-String Steam::getStringFromSteamIP(SteamNetworkingIPAddr this_address) {
+String Steam::getStringFromSteamIP(const SteamNetworkingIPAddr& this_address) {
 	char this_ip[SteamNetworkingIPAddr::k_cchMaxString];
-	this_address.ToString(this_ip, std::size(this_ip), false);
+	this_address.ToString(this_ip, SteamNetworkingIPAddr::k_cchMaxString, false);
 	return String(this_ip);
 }
 
@@ -530,14 +538,14 @@ void Steam::steamShutdown() {
 
 // Return the build ID for this app; will change based on backend updates.
 int Steam::getAppBuildId() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, 0, "[STEAM] Apps class not found when calling: getAppBuildId");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, 0, "[STEAM] Apps class not found when calling: getAppBuildId");
 	return SteamApps()->GetAppBuildId();
 }
 
 // Gets the install folder for a specific AppID.
 Dictionary Steam::getAppInstallDir(uint32_t app_id) {
 	Dictionary app_install;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, app_install, "[STEAM] Apps class not found when calling: getAppInstallDir");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, app_install, "[STEAM] Apps class not found when calling: getAppInstallDir");
 	char buffer[STEAM_BUFFER_SIZE]{};
 	uint32 install_size = SteamApps()->GetAppInstallDir((AppId_t)app_id, buffer, STEAM_BUFFER_SIZE);
 	String install_directory = buffer;
@@ -552,21 +560,21 @@ Dictionary Steam::getAppInstallDir(uint32_t app_id) {
 
 // Gets the Steam ID of the original owner of the current app. If it's different from the current user then it is borrowed.
 uint64_t Steam::getAppOwner() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, 0, "[STEAM] Apps class not found when calling: getAppOwner");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, 0, "[STEAM] Apps class not found when calling: getAppOwner");
 	CSteamID converted_steam_id = SteamApps()->GetAppOwner();
 	return converted_steam_id.ConvertToUint64();
 }
 
 // Gets a comma separated list of the languages the current app supports.
 String Steam::getAvailableGameLanguages() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, "None", "[STEAM] Apps class not found when calling: getAppOwner");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, "None", "[STEAM] Apps class not found when calling: getAppOwner");
 	return SteamApps()->GetAvailableGameLanguages();
 }
 
 // Return beta branch details, name, description, current build ID and state flags (BetaBranchFlags).
 Dictionary Steam::getBetaInfo() {
 	Dictionary beta_info;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, beta_info, "[STEAM] Apps class not found when calling: getBetaInfo");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, beta_info, "[STEAM] Apps class not found when calling: getBetaInfo");
 	int beta_index = 0;
 	uint32 beta_flags = 0;
 	uint32 beta_build_id = 0;
@@ -585,7 +593,7 @@ Dictionary Steam::getBetaInfo() {
 // Checks if the user is running from a beta branch, and gets the name of the branch if they are.
 String Steam::getCurrentBetaName() {
 	String beta_name = "";
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, beta_name, "[STEAM] Apps class not found when calling: getCurrentBetaName");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, beta_name, "[STEAM] Apps class not found when calling: getCurrentBetaName");
 	char name_string[STEAM_LARGE_BUFFER_SIZE];
 	if (SteamApps()->GetCurrentBetaName(name_string, STEAM_LARGE_BUFFER_SIZE)) {
 		beta_name = String(name_string);
@@ -595,20 +603,20 @@ String Steam::getCurrentBetaName() {
 
 // Gets the current language that the user has set.
 String Steam::getCurrentGameLanguage() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, "", "[STEAM] Apps class not found when calling: getCurrentGameLanguage");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, "", "[STEAM] Apps class not found when calling: getCurrentGameLanguage");
 	return SteamApps()->GetCurrentGameLanguage();
 }
 
 // Get the number of DLC the user owns for a parent application/game.
 int Steam::getDLCCount() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, 0, "[STEAM] Apps class not found when calling: getDLCCount");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, 0, "[STEAM] Apps class not found when calling: getDLCCount");
 	return SteamApps()->GetDLCCount();
 }
 
 // Get the DLC data in one shot
 Array Steam::getDLCData() {
 	Array dlc_data;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, dlc_data, "[STEAM] Apps class not found when calling: getDLCData");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, dlc_data, "[STEAM] Apps class not found when calling: getDLCData");
 	int32 count = SteamApps()->GetDLCCount();
 	for (int i = 0; i < count; i++) {
 		dlc_data.append(getDLCDataByIndex(i));
@@ -619,7 +627,7 @@ Array Steam::getDLCData() {
 // Returns metadata for a DLC by index.
 Dictionary Steam::getDLCDataByIndex(uint32_t this_dlc_index) {
 	Dictionary dlc_data;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, dlc_data, "[STEAM] Apps class not found when calling: getDLCDataByIndex");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, dlc_data, "[STEAM] Apps class not found when calling: getDLCDataByIndex");
 	AppId_t app_id = 0;
 	bool available = false;
 	char name[STEAM_BUFFER_SIZE];
@@ -637,7 +645,7 @@ Dictionary Steam::getDLCDataByIndex(uint32_t this_dlc_index) {
 Dictionary Steam::getDLCDownloadProgress(uint32_t dlc_id) {
 	Dictionary progress;
 	progress["ret"] = false;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, progress, "[STEAM] Apps class not found when calling: getDLCDownloadProgress");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, progress, "[STEAM] Apps class not found when calling: getDLCDownloadProgress");
 	uint64 downloaded = 0;
 	uint64 total = 0;
 	// Get the progress
@@ -651,13 +659,13 @@ Dictionary Steam::getDLCDownloadProgress(uint32_t dlc_id) {
 
 // Gets the time of purchase of the specified app in Unix epoch format (time since Jan 1st, 1970).
 uint32_t Steam::getEarliestPurchaseUnixTime(uint32_t app_id) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, 0, "[STEAM] Apps class not found when calling: getEarliestPurchaseUnixTime");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, 0, "[STEAM] Apps class not found when calling: getEarliestPurchaseUnixTime");
 	return SteamApps()->GetEarliestPurchaseUnixTime((AppId_t)app_id);
 }
 
 // Asynchronously retrieves metadata details about a specific file in the depot manifest.
 void Steam::getFileDetails(const String &filename) {
-	ERR_FAIL_COND_MSG(SteamApps() == NULL, "[STEAM] Apps class not found when calling: getFileDetails");
+	ERR_FAIL_COND_MSG(SteamApps() == nullptr, "[STEAM] Apps class not found when calling: getFileDetails");
 	SteamApps()->GetFileDetails(filename.utf8().get_data());
 }
 
@@ -666,7 +674,7 @@ void Steam::getFileDetails(const String &filename) {
 // @return Array of the installed depots, returned in mount order.
 Array Steam::getInstalledDepots(uint32_t app_id) {
 	Array installed_depots;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, installed_depots, "[STEAM] Apps class not found when calling: getInstalledDepots");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, installed_depots, "[STEAM] Apps class not found when calling: getInstalledDepots");
 	DepotId_t depots[32];
 	uint32 installed = SteamApps()->GetInstalledDepots((AppId_t)app_id, depots, 32);
 	for (uint32 i = 0; i < installed; i++) {
@@ -680,7 +688,7 @@ Array Steam::getInstalledDepots(uint32_t app_id) {
 // joins to go through this and not be placed on the OS command line, you must enable "Use launch command line" from the
 // Installation > General page on your app.
 String Steam::getLaunchCommandLine() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, "", "[STEAM] Apps class not found when calling: getLaunchCommandLine");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, "", "[STEAM] Apps class not found when calling: getLaunchCommandLine");
 	char commands[STEAM_BUFFER_SIZE]{};
 	SteamApps()->GetLaunchCommandLine(commands, STEAM_BUFFER_SIZE);
 	return commands;
@@ -688,14 +696,14 @@ String Steam::getLaunchCommandLine() {
 
 // Gets the associated launch parameter if the game is run via steam://run/<appid>/?param1=value1;param2=value2;param3=value3 etc.
 String Steam::getLaunchQueryParam(const String &key) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, "", "[STEAM] Apps class not found when calling: getLaunchQueryParam");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, "", "[STEAM] Apps class not found when calling: getLaunchQueryParam");
 	return SteamApps()->GetLaunchQueryParam(key.utf8().get_data());
 }
 
 // Returns total number of known app beta branches (including default "public" branch).
 Dictionary Steam::getNumBetas() {
 	Dictionary beta_branches;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, beta_branches, "[STEAM] Apps class not found when calling: getNumBetas");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, beta_branches, "[STEAM] Apps class not found when calling: getNumBetas");
 	int available_betas = 0;
 	int private_betas = 0;
 	int all_betas = SteamApps()->GetNumBetas(&available_betas, &private_betas);
@@ -707,50 +715,50 @@ Dictionary Steam::getNumBetas() {
 
 // Allows you to install an optional DLC.
 void Steam::installDLC(uint32_t dlc_id) {
-	ERR_FAIL_COND_MSG(SteamApps() == NULL, "[STEAM] Apps class not found when calling: installDLC");
+	ERR_FAIL_COND_MSG(SteamApps() == nullptr, "[STEAM] Apps class not found when calling: installDLC");
 	SteamApps()->InstallDLC((AppId_t)dlc_id);
 }
 
 // Check if given application/game is installed, not necessarily owned.
 bool Steam::isAppInstalled(uint32_t app_id) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isAppInstalled");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isAppInstalled");
 	return SteamApps()->BIsAppInstalled((AppId_t)app_id);
 }
 
 // Checks whether the current App ID is for Cyber Cafes.
 bool Steam::isCybercafe() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isCybercafe");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isCybercafe");
 	return SteamApps()->BIsCybercafe();
 }
 
 // Checks if the user owns a specific DLC and if the DLC is installed
 bool Steam::isDLCInstalled(uint32_t dlc_id) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isDLCInstalled");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isDLCInstalled");
 	return SteamApps()->BIsDlcInstalled((AppId_t)dlc_id);
 }
 
 // Checks if the license owned by the user provides low violence depots.
 bool Steam::isLowViolence() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isLowViolence");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isLowViolence");
 	return SteamApps()->BIsLowViolence();
 }
 
 // Checks if the active user is subscribed to the current App ID.
 bool Steam::isSubscribed() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isSubscribed");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isSubscribed");
 	return SteamApps()->BIsSubscribed();
 }
 
 // Checks if the active user is subscribed to a specified AppId.
 bool Steam::isSubscribedApp(uint32_t app_id) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isSubscribedApp");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isSubscribedApp");
 	return SteamApps()->BIsSubscribedApp((AppId_t)app_id);
 }
 
 // Checks if the active user is accessing the current app_id via a temporary Family Shared license owned by another user.
 // If you need to determine the steam_id of the permanent owner of the license, use getAppOwner.
 bool Steam::isSubscribedFromFamilySharing() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isSubscribedFromFamilySharing");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isSubscribedFromFamilySharing");
 	return SteamApps()->BIsSubscribedFromFamilySharing();
 }
 
@@ -758,14 +766,14 @@ bool Steam::isSubscribedFromFamilySharing() {
 // This function will return false for users who have a retail or other type of license.
 // Suggested you contact Valve on how to package and secure your free weekend properly.
 bool Steam::isSubscribedFromFreeWeekend() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isSubscribedFromFreeWeekend");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isSubscribedFromFreeWeekend");
 	return SteamApps()->BIsSubscribedFromFreeWeekend();
 }
 
 // Check if game is a timed trial with limited playtime.
 Dictionary Steam::isTimedTrial() {
 	Dictionary trial;
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, trial, "[STEAM] Apps class not found when calling: isTimedTrial");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, trial, "[STEAM] Apps class not found when calling: isTimedTrial");
 	uint32 allowed = 0;
 	uint32 played = 0;
 	if (SteamApps()->BIsTimedTrial(&allowed, &played)) {
@@ -777,31 +785,31 @@ Dictionary Steam::isTimedTrial() {
 
 // Checks if the user has a VAC ban on their account.
 bool Steam::isVACBanned() {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: isVACBanned");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: isVACBanned");
 	return SteamApps()->BIsVACBanned();
 }
 
 // Allows you to force verify game content on next launch.
 bool Steam::markContentCorrupt(bool missing_files_only) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: markContentCorrupt");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: markContentCorrupt");
 	return SteamApps()->MarkContentCorrupt(missing_files_only);
 }
 
 // Select this beta branch for this app as active, might need the game to restart so Steam can update to that branch.
 bool Steam::setActiveBeta(String beta_name) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: setActiveBeta");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: setActiveBeta");
 	return SteamApps()->SetActiveBeta(beta_name.utf8().get_data());
 }
 
 // Set current DLC AppID being played (or 0 if none). Allows Steam to track usage of major DLC extensions.
 bool Steam::setDLCContext(uint32_t app_id) {
-	ERR_FAIL_COND_V_MSG(SteamApps() == NULL, false, "[STEAM] Apps class not found when calling: setDLCContext");
+	ERR_FAIL_COND_V_MSG(SteamApps() == nullptr, false, "[STEAM] Apps class not found when calling: setDLCContext");
 	return SteamApps()->SetDlcContext((AppId_t)app_id);
 }
 
 // Allows you to uninstall an optional DLC.
 void Steam::uninstallDLC(uint32_t dlc_id) {
-	ERR_FAIL_COND_MSG(SteamApps() == NULL, "[STEAM] Apps class not found when calling: uninstallDLC");
+	ERR_FAIL_COND_MSG(SteamApps() == nullptr, "[STEAM] Apps class not found when calling: uninstallDLC");
 	SteamApps()->UninstallDLC((AppId_t)dlc_id);
 }
 
@@ -811,52 +819,52 @@ void Steam::uninstallDLC(uint32_t dlc_id) {
 // Activates the overlay with optional dialog to open the following: "Friends", "Community", "Players", "Settings",
 // "OfficialGameGroup", "Stats", "Achievements", "LobbyInvite".
 void Steam::activateGameOverlay(const String &url) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: activateGameOverlay");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: activateGameOverlay");
 	SteamFriends()->ActivateGameOverlay(url.utf8().get_data());
 }
 
 // Activates game overlay to open the invite dialog. Invitations will be sent for the provided lobby.
 void Steam::activateGameOverlayInviteDialog(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: activateGameOverlayInviteDialog");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: activateGameOverlayInviteDialog");
 	CSteamID user_id = (uint64)steam_id;
 	SteamFriends()->ActivateGameOverlayInviteDialog(user_id);
 }
 
 // Activates the game overlay to open an invite dialog that will send the provided Rich Presence connect string to selected friends.
 void Steam::activateGameOverlayInviteDialogConnectString(const String &connect_string) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: activateGameOverlayInviteDialogConnectString");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: activateGameOverlayInviteDialogConnectString");
 	SteamFriends()->ActivateGameOverlayInviteDialogConnectString(connect_string.utf8().get_data());
 }
 
 // Activates the overlay with the application/game Steam store page.
 void Steam::activateGameOverlayToStore(uint32_t app_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: activateGameOverlayToStore");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: activateGameOverlayToStore");
 	SteamFriends()->ActivateGameOverlayToStore(AppId_t(app_id), EOverlayToStoreFlag(0));
 }
 
 // Activates the overlay to the following: "steamid", "chat", "jointrade", "stats", "achievements", "friendadd", "friendremove",
 // "friendrequestaccept", "friendrequestignore".
 void Steam::activateGameOverlayToUser(const String &url, uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: activateGameOverlayToUser");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: activateGameOverlayToUser");
 	CSteamID user_id = (uint64)steam_id;
 	SteamFriends()->ActivateGameOverlayToUser(url.utf8().get_data(), user_id);
 }
 
 // Activates the overlay with specified web address.
 void Steam::activateGameOverlayToWebPage(const String &url, OverlayToWebPageMode webpage_mode) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: activateGameOverlayToWebPage");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: activateGameOverlayToWebPage");
 	SteamFriends()->ActivateGameOverlayToWebPage(url.utf8().get_data(), (EActivateGameOverlayToWebPageMode)webpage_mode);
 }
 
 // Clear the game information in Steam; used in 'View Game Info'.
 void Steam::clearRichPresence() {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: clearRichPresence");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: clearRichPresence");
 	SteamFriends()->ClearRichPresence();
 }
 
 // Closes the specified Steam group chat room in the Steam UI.
 bool Steam::closeClanChatWindowInSteam(uint64_t chat_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Apps class not found when calling: closeClanChatWindowInSteam");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Apps class not found when calling: closeClanChatWindowInSteam");
 	CSteamID chat = (uint64)chat_id;
 	return SteamFriends()->CloseClanChatWindowInSteam(chat);
 }
@@ -864,7 +872,7 @@ bool Steam::closeClanChatWindowInSteam(uint64_t chat_id) {
 // For clans a user is a member of, they will have reasonably up-to-date information, but for others you'll have to download the
 // info to have the latest.
 void Steam::downloadClanActivityCounts(uint64_t clan_id, int clans_to_request) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: downloadClanActivityCounts");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: downloadClanActivityCounts");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	SteamFriends()->DownloadClanActivityCounts(&clan, clans_to_request);
@@ -872,14 +880,14 @@ void Steam::downloadClanActivityCounts(uint64_t clan_id, int clans_to_request) {
 
 // Gets the list of users that the current user is following.
 void Steam::enumerateFollowingList(uint32 start_index) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: enumerateFollowingList");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: enumerateFollowingList");
 	SteamAPICall_t api_call = SteamFriends()->EnumerateFollowingList(start_index);
 	callResultEnumerateFollowingList.Set(api_call, this, &Steam::enumerate_following_list);
 }
 
 // Gets the Steam ID at the given index in a Steam group chat.
 uint64_t Steam::getChatMemberByIndex(uint64_t clan_id, int user) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getChatMemberByIndex");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getChatMemberByIndex");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	CSteamID chat_id = SteamFriends()->GetChatMemberByIndex(clan, user);
@@ -889,7 +897,7 @@ uint64_t Steam::getChatMemberByIndex(uint64_t clan_id, int user) {
 // Gets the most recent information we have about what the users in a Steam Group are doing.
 Dictionary Steam::getClanActivityCounts(uint64_t clan_id) {
 	Dictionary activity;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, activity, "[STEAM] Friends class not found when calling: getClanActivityCounts");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, activity, "[STEAM] Friends class not found when calling: getClanActivityCounts");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	int online = 0;
@@ -908,13 +916,13 @@ Dictionary Steam::getClanActivityCounts(uint64_t clan_id) {
 
 // Gets the Steam group's Steam ID at the given index.
 uint64_t Steam::getClanByIndex(int clan_index) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getClanByIndex");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getClanByIndex");
 	return SteamFriends()->GetClanByIndex(clan_index).ConvertToUint64();
 }
 
 // Get the number of users in a Steam group chat.
 int Steam::getClanChatMemberCount(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getClanChatMemberCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getClanChatMemberCount");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	return SteamFriends()->GetClanChatMemberCount(clan);
@@ -924,7 +932,7 @@ int Steam::getClanChatMemberCount(uint64_t clan_id) {
 // GameConnectedClanChatMsg_t callback.
 Dictionary Steam::getClanChatMessage(uint64_t chat_id, int message) {
 	Dictionary chat_message;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, chat_message, "[STEAM] Friends class not found when calling: getClanChatMessage");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, chat_message, "[STEAM] Friends class not found when calling: getClanChatMessage");
 	CSteamID chat = (uint64)chat_id;
 	char text[STEAM_LARGE_BUFFER_SIZE]{};
 	EChatEntryType type = k_EChatEntryTypeInvalid;
@@ -940,13 +948,13 @@ Dictionary Steam::getClanChatMessage(uint64_t chat_id, int message) {
 // Gets the number of Steam groups that the current user is a member of.  This is used for iteration, after calling this then
 // GetClanByIndex can be used to get the Steam ID of each Steam group.
 int Steam::getClanCount() {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getClanCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getClanCount");
 	return SteamFriends()->GetClanCount();
 }
 
 // Gets the display name for the specified Steam group; if the local client knows about it.
 String Steam::getClanName(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getClanName");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getClanName");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	return String::utf8(SteamFriends()->GetClanName(clan));
@@ -954,7 +962,7 @@ String Steam::getClanName(uint64_t clan_id) {
 
 // Returns the steam_id of a clan officer, by index, of range [0,GetClanOfficerCount).
 uint64_t Steam::getClanOfficerByIndex(uint64_t clan_id, int officer) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getClanOfficerByIndex");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getClanOfficerByIndex");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	CSteamID officer_id = SteamFriends()->GetClanOfficerByIndex(clan, officer);
@@ -963,7 +971,7 @@ uint64_t Steam::getClanOfficerByIndex(uint64_t clan_id, int officer) {
 
 // Returns the number of officers in a clan (including the owner).
 int Steam::getClanOfficerCount(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getClanOfficerCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getClanOfficerCount");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	return SteamFriends()->GetClanOfficerCount(clan);
@@ -971,7 +979,7 @@ int Steam::getClanOfficerCount(uint64_t clan_id) {
 
 // Returns the steam_id of the clan owner.
 uint64_t Steam::getClanOwner(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getClanOwner");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getClanOwner");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	CSteamID owner_id = SteamFriends()->GetClanOwner(clan);
@@ -982,7 +990,7 @@ uint64_t Steam::getClanOwner(uint64_t clan_id) {
 // abbreviation is a unique way for people to identify the group and is limited to 12 characters. In some games this will appear
 // next to the name of group members.
 String Steam::getClanTag(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getClanTag");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getClanTag");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	return String::utf8(SteamFriends()->GetClanTag(clan));
@@ -990,7 +998,7 @@ String Steam::getClanTag(uint64_t clan_id) {
 
 // Gets the Steam ID of the recently played with user at the given index.
 uint64_t Steam::getCoplayFriend(int friend_number) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getCoplayFriend");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getCoplayFriend");
 	CSteamID friend_id = SteamFriends()->GetCoplayFriend(friend_number);
 	return friend_id.ConvertToUint64();
 }
@@ -999,13 +1007,13 @@ uint64_t Steam::getCoplayFriend(int friend_number) {
 // after calling this then GetCoplayFriend can be used to get the Steam ID of each player.  These players are have been set with
 // previous calls to SetPlayedWith.
 int Steam::getCoplayFriendCount() {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getCoplayFriendCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getCoplayFriendCount");
 	return SteamFriends()->GetCoplayFriendCount();
 }
 
 // Gets the number of users following the specified user.
 void Steam::getFollowerCount(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: getFollowerCount");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: getFollowerCount");
 	CSteamID user_id = (uint64)steam_id;
 	SteamAPICall_t api_call = SteamFriends()->GetFollowerCount(user_id);
 	callResultFollowerCount.Set(api_call, this, &Steam::get_follower_count);
@@ -1013,14 +1021,14 @@ void Steam::getFollowerCount(uint64_t steam_id) {
 
 // Returns the Steam ID of a user.
 uint64_t Steam::getFriendByIndex(int friend_number, BitField<FriendFlags> friend_flags) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendByIndex");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendByIndex");
 	CSteamID friend_id = SteamFriends()->GetFriendByIndex(friend_number, (int)friend_flags);
 	return friend_id.ConvertToUint64();
 }
 
 // Gets the app ID of the game that user played with someone on their recently-played-with list.
 uint32 Steam::getFriendCoplayGame(uint64_t friend_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendCoplayGame");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendCoplayGame");
 	CSteamID steam_id = (uint64)friend_id;
 	return SteamFriends()->GetFriendCoplayGame(steam_id);
 }
@@ -1028,27 +1036,27 @@ uint32 Steam::getFriendCoplayGame(uint64_t friend_id) {
 // Gets the timestamp of when the user played with someone on their recently-played-with list.  The time is provided in Unix epoch
 // format (seconds since Jan 1st 1970).
 int Steam::getFriendCoplayTime(uint64_t friend_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendCoplayTime");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendCoplayTime");
 	CSteamID steam_id = (uint64)friend_id;
 	return SteamFriends()->GetFriendCoplayTime(steam_id);
 }
 
 // Get number of friends user has.
 int Steam::getFriendCount(BitField<FriendFlags> friend_flags) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendCount");
 	return SteamFriends()->GetFriendCount(friend_flags);
 }
 
 // Iterators for getting users in a chat room, lobby, game server or clan.
 int Steam::getFriendCountFromSource(uint64_t source_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendCountFromSource");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendCountFromSource");
 	CSteamID source = (uint64)source_id;
 	return SteamFriends()->GetFriendCountFromSource(source);
 }
 
 // Gets the Steam ID at the given index from a source (Steam group, chat room, lobby, or game server).
 uint64_t Steam::getFriendFromSourceByIndex(uint64_t source_id, int friend_number) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendFromSourceByIndex");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendFromSourceByIndex");
 	CSteamID source = (uint64)source_id;
 	CSteamID friend_id = SteamFriends()->GetFriendFromSourceByIndex(source, friend_number);
 	return friend_id.ConvertToUint64();
@@ -1057,7 +1065,7 @@ uint64_t Steam::getFriendFromSourceByIndex(uint64_t source_id, int friend_number
 // Returns dictionary of friend game played if valid
 Dictionary Steam::getFriendGamePlayed(uint64_t steam_id) {
 	Dictionary friend_game;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, friend_game, "[STEAM] Friends class not found when calling: getFriendGamePlayed");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, friend_game, "[STEAM] Friends class not found when calling: getFriendGamePlayed");
 	FriendGameInfo_t game_info;
 	CSteamID user_id = (uint64)steam_id;
 	bool success = SteamFriends()->GetFriendGamePlayed(user_id, &game_info);
@@ -1086,7 +1094,7 @@ Dictionary Steam::getFriendGamePlayed(uint64_t steam_id) {
 // callback.
 Dictionary Steam::getFriendMessage(uint64_t friend_id, int message) {
 	Dictionary chat;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, chat, "[STEAM] Friends class not found when calling: getFriendMessage");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, chat, "[STEAM] Friends class not found when calling: getFriendMessage");
 	char text[STEAM_LARGE_BUFFER_SIZE]{};
 	EChatEntryType type = k_EChatEntryTypeInvalid;
 	chat["ret"] = SteamFriends()->GetFriendMessage(createSteamID(friend_id), message, text, STEAM_LARGE_BUFFER_SIZE, &type);
@@ -1097,7 +1105,7 @@ Dictionary Steam::getFriendMessage(uint64_t friend_id, int message) {
 
 // Get given friend's Steam username.
 String Steam::getFriendPersonaName(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getFriendPersonaName");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getFriendPersonaName");
 	ERR_FAIL_COND_V_MSG(steam_id <= 0, "", "[STEAM] Invalid Steam ID sent to getFriendPersonaName");
 	CSteamID user_id = (uint64)steam_id;
 	bool is_data_loading = SteamFriends()->RequestUserInformation(user_id, true);
@@ -1109,42 +1117,42 @@ String Steam::getFriendPersonaName(uint64_t steam_id) {
 
 // Accesses old friends names; returns an empty string when there are no more items in the history.
 String Steam::getFriendPersonaNameHistory(uint64_t steam_id, int name_history) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getFriendPersonaNameHistory");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getFriendPersonaNameHistory");
 	CSteamID user_id = (uint64)steam_id;
 	return String::utf8(SteamFriends()->GetFriendPersonaNameHistory(user_id, name_history));
 }
 
 // Returns the current status of the specified user.
 PersonaState Steam::getFriendPersonaState(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, PERSONA_STATE_OFFLINE, "[STEAM] Friends class not found when calling: getFriendPersonaState");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, PERSONA_STATE_OFFLINE, "[STEAM] Friends class not found when calling: getFriendPersonaState");
 	CSteamID user_id = (uint64)steam_id;
 	return PersonaState(SteamFriends()->GetFriendPersonaState(user_id));
 }
 
 // Returns a relationship to a user.
 FriendRelationship Steam::getFriendRelationship(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, FRIEND_RELATION_NONE, "[STEAM] Friends class not found when calling: getFriendRelationship");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, FRIEND_RELATION_NONE, "[STEAM] Friends class not found when calling: getFriendRelationship");
 	CSteamID user_id = (uint64)steam_id;
 	return FriendRelationship(SteamFriends()->GetFriendRelationship(user_id));
 }
 
 // Get a Rich Presence value from a specified friend (typically only used for debugging).
 String Steam::getFriendRichPresence(uint64_t friend_id, const String &key) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getFriendRichPresence");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getFriendRichPresence");
 	CSteamID user = (uint64)friend_id;
 	return SteamFriends()->GetFriendRichPresence(user, key.utf8().get_data());
 }
 
 // Gets the number of Rich Presence keys that are set on the specified user.
 int Steam::getFriendRichPresenceKeyCount(uint64_t friend_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendRichPresenceKeyCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendRichPresenceKeyCount");
 	CSteamID user = (uint64)friend_id;
 	return SteamFriends()->GetFriendRichPresenceKeyCount(user);
 }
 
 // Returns an empty string ("") if the index is invalid or the specified user has no Rich Presence data available.
 String Steam::getFriendRichPresenceKeyByIndex(uint64_t friend_id, int key) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getFriendRichPresenceKeyByIndex");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getFriendRichPresenceKeyByIndex");
 	CSteamID user = (uint64)friend_id;
 	return SteamFriends()->GetFriendRichPresenceKeyByIndex(user, key);
 }
@@ -1153,20 +1161,20 @@ String Steam::getFriendRichPresenceKeyByIndex(uint64_t friend_id, int key) {
 // GetFriendsGroupIDByIndex can be used to get the ID of each friend group.  This is not to be confused with Steam groups. Those
 // can be obtained with GetClanCount.
 int Steam::getFriendsGroupCount() {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendsGroupCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendsGroupCount");
 	return SteamFriends()->GetFriendsGroupCount();
 }
 
 // Gets the friends group ID for the given index.
 int16 Steam::getFriendsGroupIDByIndex(int16 friend_group) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendsGroupIDByIndex");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendsGroupIDByIndex");
 	return SteamFriends()->GetFriendsGroupIDByIndex(friend_group);
 }
 
 // Gets the number of friends in a given friends group.  This should be called before getting the list of friends with
 // GetFriendsGroupMembersList.
 int Steam::getFriendsGroupMembersCount(int16 friend_group) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendsGroupMembersCount");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendsGroupMembersCount");
 	return SteamFriends()->GetFriendsGroupMembersCount(friend_group);
 }
 
@@ -1175,7 +1183,7 @@ int Steam::getFriendsGroupMembersCount(int16 friend_group) {
 // appropriate size!
 Array Steam::getFriendsGroupMembersList(int16 friend_group, int member_count) {
 	Array member_list;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, member_list, "[STEAM] Friends class not found when calling: getFriendsGroupMembersList");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, member_list, "[STEAM] Friends class not found when calling: getFriendsGroupMembersList");
 	CSteamID friend_ids;
 	SteamFriends()->GetFriendsGroupMembersList((FriendsGroupID_t)friend_group, &friend_ids, member_count);
 	uint64_t friends = friend_ids.ConvertToUint64();
@@ -1185,46 +1193,46 @@ Array Steam::getFriendsGroupMembersList(int16 friend_group, int member_count) {
 
 // Gets the name for the given friends group.
 String Steam::getFriendsGroupName(int16 friend_group) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getFriendsGroupName");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getFriendsGroupName");
 	return String::utf8(SteamFriends()->GetFriendsGroupName(friend_group));
 }
 
 // Get friend's steam level, obviously.
 int Steam::getFriendSteamLevel(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getFriendSteamLevel");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getFriendSteamLevel");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->GetFriendSteamLevel(user_id);
 }
 
 // Gets the large (184x184) avatar of the current user, which is a handle to be used in GetImageRGBA(), or 0 if none set.
 int Steam::getLargeFriendAvatar(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getLargeFriendAvatar");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getLargeFriendAvatar");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->GetLargeFriendAvatar(user_id);
 }
 
 // Gets the medium (64x64) avatar of the current user, which is a handle to be used in GetImageRGBA(), or 0 if none set.
 int Steam::getMediumFriendAvatar(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getMediumFriendAvatar");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getMediumFriendAvatar");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->GetMediumFriendAvatar(user_id);
 }
 
 // Get the user's Steam username.
 String Steam::getPersonaName() {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getPersonaName");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getPersonaName");
 	return String::utf8(SteamFriends()->GetPersonaName());
 }
 
 // Gets the status of the current user.
 PersonaState Steam::getPersonaState() {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, PERSONA_STATE_OFFLINE, "[STEAM] Friends class not found when calling: getPersonaState");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, PERSONA_STATE_OFFLINE, "[STEAM] Friends class not found when calling: getPersonaState");
 	return PersonaState(SteamFriends()->GetPersonaState());
 }
 
 // Get player's avatar.
 void Steam::getPlayerAvatar(int size, uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: getPlayerAvatar");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: getPlayerAvatar");
 	if (steam_id == 0) {
 		steam_id = SteamUser()->GetSteamID().ConvertToUint64();
 	}
@@ -1254,21 +1262,21 @@ void Steam::getPlayerAvatar(int size, uint64_t steam_id) {
 
 // Returns nickname the current user has set for the specified player. Returns NULL if the no nickname has been set for that player.
 String Steam::getPlayerNickname(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getPlayerNickname");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getPlayerNickname");
 	CSteamID user_id = (uint64)steam_id;
 	return String::utf8(SteamFriends()->GetPlayerNickname(user_id));
 }
 
 // Returns a string property for a user's equipped profile item.
 String Steam::getProfileItemPropertyString(uint64_t steam_id, CommunityProfileItemType item_type, CommunityProfileItemProperty item_property) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, "", "[STEAM] Friends class not found when calling: getProfileItemPropertyString");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, "", "[STEAM] Friends class not found when calling: getProfileItemPropertyString");
 	CSteamID user_id = (uint64)steam_id;
 	return String::utf8(SteamFriends()->GetProfileItemPropertyString(user_id, (ECommunityProfileItemType)item_type, (ECommunityProfileItemProperty)item_property));
 }
 
 // Returns an unsigned integer property for a user's equipped profile item.
 uint32 Steam::getProfileItemPropertyInt(uint64_t steam_id, CommunityProfileItemType item_type, CommunityProfileItemProperty item_property) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getProfileItemPropertyInt");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getProfileItemPropertyInt");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->GetProfileItemPropertyUint(user_id, (ECommunityProfileItemType)item_type, (ECommunityProfileItemProperty)item_property);
 }
@@ -1276,7 +1284,7 @@ uint32 Steam::getProfileItemPropertyInt(uint64_t steam_id, CommunityProfileItemT
 // Get list of players user has recently played game with.
 Array Steam::getRecentPlayers() {
 	Array recents;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, recents, "[STEAM] Friends class not found when calling: getRecentPlayers");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, recents, "[STEAM] Friends class not found when calling: getRecentPlayers");
 	int count = SteamFriends()->GetCoplayFriendCount();
 	for (int i = 0; i < count; i++) {
 		CSteamID player_id = SteamFriends()->GetCoplayFriend(i);
@@ -1296,7 +1304,7 @@ Array Steam::getRecentPlayers() {
 
 // Gets the small (32x32) avatar of the current user, which is a handle to be used in GetImageRGBA(), or 0 if none set.
 int Steam::getSmallFriendAvatar(uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, 0, "[STEAM] Friends class not found when calling: getSmallFriendAvatar");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, 0, "[STEAM] Friends class not found when calling: getSmallFriendAvatar");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->GetSmallFriendAvatar(user_id);
 }
@@ -1304,9 +1312,9 @@ int Steam::getSmallFriendAvatar(uint64_t steam_id) {
 // Get list of friends groups (tags) the user has created. This is not to be confused with Steam groups.
 Array Steam::getUserFriendsGroups() {
 	Array friends_groups;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, friends_groups, "[STEAM] Friends class not found when calling: getUserFriendsGroups");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, friends_groups, "[STEAM] Friends class not found when calling: getUserFriendsGroups");
 	int tag_count = SteamFriends()->GetFriendsGroupCount();
-	
+
 	for (int i = 0; i < tag_count; i++) {
 		Dictionary tags;
 		int16 friends_group_id = SteamFriends()->GetFriendsGroupIDByIndex(i);
@@ -1323,7 +1331,7 @@ Array Steam::getUserFriendsGroups() {
 // Get a list of user's Steam friends; a mix of different Steamworks API friend functions.
 Array Steam::getUserSteamFriends() {
 	Array steam_friends;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, steam_friends, "[STEAM] Friends class not found when calling: getUserSteamFriends");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, steam_friends, "[STEAM] Friends class not found when calling: getUserSteamFriends");
 	int count = SteamFriends()->GetFriendCount(FRIEND_FLAG_ALL);
 	for (int i = 0; i < count; i++) {
 		Dictionary friends;
@@ -1340,7 +1348,7 @@ Array Steam::getUserSteamFriends() {
 // Get list of user's Steam groups; a mix of different Steamworks API group functions.
 Array Steam::getUserSteamGroups() {
 	Array steam_groups;
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, steam_groups, "[STEAM] Friends class not found when calling: getUserSteamGroups");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, steam_groups, "[STEAM] Friends class not found when calling: getUserSteamGroups");
 	int group_count = SteamFriends()->GetClanCount();
 	for (int i = 0; i < group_count; i++) {
 		Dictionary groups;
@@ -1358,28 +1366,28 @@ Array Steam::getUserSteamGroups() {
 // After calling RequestEquippedProfileItems, you can use this function to check if the user has a type of profile item equipped
 // or not.
 bool Steam::hasEquippedProfileItem(uint64_t steam_id, CommunityProfileItemType item_type) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: hasEquippedProfileItem");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: hasEquippedProfileItem");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->BHasEquippedProfileItem(user_id, (ECommunityProfileItemType)item_type);
 }
 
 // Returns true if the specified user meets any of the criteria specified in iFriendFlags.
 bool Steam::hasFriend(uint64_t steam_id, BitField<FriendFlags> friend_flags) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: hasFriend");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: hasFriend");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->HasFriend(user_id, (int)friend_flags);
 }
 
 // Invite friend to current game/lobby.
 bool Steam::inviteUserToGame(uint64_t steam_id, const String &connect_string) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: inviteUserToGame");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: inviteUserToGame");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->InviteUserToGame(user_id, connect_string.utf8().get_data());
 }
 
 // Checks if a user in the Steam group chat room is an admin.
 bool Steam::isClanChatAdmin(uint64_t chat_id, uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: isClanChatAdmin");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: isClanChatAdmin");
 	CSteamID chat = (uint64)chat_id;
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->IsClanChatAdmin(chat, user_id);
@@ -1387,7 +1395,7 @@ bool Steam::isClanChatAdmin(uint64_t chat_id, uint64_t steam_id) {
 
 // Checks if the Steam group is public.
 bool Steam::isClanPublic(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: isClanPublic");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: isClanPublic");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	return SteamFriends()->IsClanPublic(clan);
@@ -1395,7 +1403,7 @@ bool Steam::isClanPublic(uint64_t clan_id) {
 
 // Checks if the Steam group is an official game group/community hub.
 bool Steam::isClanOfficialGameGroup(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: isClanOfficialGameGroup");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: isClanOfficialGameGroup");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	return SteamFriends()->IsClanOfficialGameGroup(clan);
@@ -1403,14 +1411,14 @@ bool Steam::isClanOfficialGameGroup(uint64_t clan_id) {
 
 // Checks if the Steam Group chat room is open in the Steam UI.
 bool Steam::isClanChatWindowOpenInSteam(uint64_t chat_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: isClanChatWindowOpenInSteam");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: isClanChatWindowOpenInSteam");
 	CSteamID chat = (uint64)chat_id;
 	return SteamFriends()->IsClanChatWindowOpenInSteam(chat);
 }
 
 // Checks if the current user is following the specified user.
 void Steam::isFollowing(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: isFollowing");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: isFollowing");
 	CSteamID user_id = (uint64)steam_id;
 	SteamAPICall_t api_call = SteamFriends()->IsFollowing(user_id);
 	callResultIsFollowing.Set(api_call, this, &Steam::is_following);
@@ -1418,7 +1426,7 @@ void Steam::isFollowing(uint64_t steam_id) {
 
 // Returns true if the local user can see that steam_id_user is a member or in source_id.
 bool Steam::isUserInSource(uint64_t steam_id, uint64_t source_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: isUserInSource");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: isUserInSource");
 	CSteamID user_id = (uint64)steam_id;
 	CSteamID source = (uint64)source_id;
 	return SteamFriends()->IsUserInSource(user_id, source);
@@ -1426,7 +1434,7 @@ bool Steam::isUserInSource(uint64_t steam_id, uint64_t source_id) {
 
 // Allows the user to join Steam group (clan) chats right within the game.
 void Steam::joinClanChatRoom(uint64_t clan_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: joinClanChatRoom");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: joinClanChatRoom");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	SteamFriends()->JoinClanChatRoom(clan);
@@ -1434,7 +1442,7 @@ void Steam::joinClanChatRoom(uint64_t clan_id) {
 
 // Leaves a Steam group chat that the user has previously entered with JoinClanChatRoom.
 bool Steam::leaveClanChatRoom(uint64_t clan_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: leaveClanChatRoom");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: leaveClanChatRoom");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	return SteamFriends()->LeaveClanChatRoom(clan);
@@ -1442,7 +1450,7 @@ bool Steam::leaveClanChatRoom(uint64_t clan_id) {
 
 // Opens the specified Steam group chat room in the Steam UI.
 bool Steam::openClanChatWindowInSteam(uint64_t chat_id) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: openClanChatWindowInSteam");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: openClanChatWindowInSteam");
 	CSteamID chat = (uint64)chat_id;
 	return SteamFriends()->OpenClanChatWindowInSteam(chat);
 }
@@ -1450,20 +1458,20 @@ bool Steam::openClanChatWindowInSteam(uint64_t chat_id) {
 // Call this before calling ActivateGameOverlayToWebPage() to have the Steam Overlay Browser block navigations to your specified
 // protocol (scheme) uris and instead dispatch a OverlayBrowserProtocolNavigation_t callback to your game.
 bool Steam::registerProtocolInOverlayBrowser(const String &protocol) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: registerProtocolInOverlayBrowser");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: registerProtocolInOverlayBrowser");
 	return SteamFriends()->RegisterProtocolInOverlayBrowser(protocol.utf8().get_data());
 }
 
 // Sends a message to a Steam friend.
 bool Steam::replyToFriendMessage(uint64_t steam_id, const String &message) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: replyToFriendMessage");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: replyToFriendMessage");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->ReplyToFriendMessage(user_id, message.utf8().get_data());
 }
 
 // Requests information about a clan officer list; when complete, data is returned in ClanOfficerListResponse_t call result.
 void Steam::requestClanOfficerList(uint64_t clan_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: requestClanOfficerList");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: requestClanOfficerList");
 	current_clan_id = clan_id;
 	CSteamID clan = (uint64)current_clan_id;
 	SteamAPICall_t api_call = SteamFriends()->RequestClanOfficerList(clan);
@@ -1472,7 +1480,7 @@ void Steam::requestClanOfficerList(uint64_t clan_id) {
 
 // Requests the list of equipped Steam Community profile items for the given user from Steam.
 void Steam::requestEquippedProfileItems(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: requestEquippedProfileItems");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: requestEquippedProfileItems");
 	CSteamID user_id = (uint64)steam_id;
 	SteamAPICall_t api_call = SteamFriends()->RequestEquippedProfileItems(user_id);
 	callResultEquippedProfileItems.Set(api_call, this, &Steam::equipped_profile_items);
@@ -1480,41 +1488,41 @@ void Steam::requestEquippedProfileItems(uint64_t steam_id) {
 
 // Requests rich presence for a specific user.
 void Steam::requestFriendRichPresence(uint64_t friend_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: requestFriendRichPresence");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: requestFriendRichPresence");
 	CSteamID user = (uint64)friend_id;
 	return SteamFriends()->RequestFriendRichPresence(user);
 }
 
 // Requests information about a user - persona name & avatar; if bRequireNameOnly is set, then the avatar of a user isn't downloaded.
 bool Steam::requestUserInformation(uint64_t steam_id, bool require_name_only) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: requestUserInformation");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: requestUserInformation");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamFriends()->RequestUserInformation(user_id, require_name_only);
 }
 
 // Sends a message to a Steam group chat room.
 bool Steam::sendClanChatMessage(uint64_t chat_id, const String &text) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: sendClanChatMessage");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: sendClanChatMessage");
 	CSteamID chat = (uint64)chat_id;
 	return SteamFriends()->SendClanChatMessage(chat, text.utf8().get_data());
 }
 
 // User is in a game pressing the talk button (will suppress the microphone for all voice comms from the Steam friends UI).
 void Steam::setInGameVoiceSpeaking(uint64_t steam_id, bool speaking) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: setInGameVoiceSpeaking");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: setInGameVoiceSpeaking");
 	CSteamID user_id = (uint64)steam_id;
 	SteamFriends()->SetInGameVoiceSpeaking(user_id, speaking);
 }
 
 // Listens for Steam friends chat messages.
 bool Steam::setListenForFriendsMessages(bool intercept) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: setListenForFriendsMessages");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: setListenForFriendsMessages");
 	return SteamFriends()->SetListenForFriendsMessages(intercept);
 }
 
 // Set player as 'Played With' for game.
 void Steam::setPlayedWith(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamFriends() == NULL, "[STEAM] Friends class not found when calling: setPlayedWith");
+	ERR_FAIL_COND_MSG(SteamFriends() == nullptr, "[STEAM] Friends class not found when calling: setPlayedWith");
 	CSteamID user_id = (uint64)steam_id;
 	SteamFriends()->SetPlayedWith(user_id);
 }
@@ -1523,7 +1531,7 @@ void Steam::setPlayedWith(uint64_t steam_id) {
 // game. Each user has a set of key/value pairs, up to 20 can be set. Two magic keys (status, connect).  setGameInfo() to an empty
 // string deletes the key.
 bool Steam::setRichPresence(const String &key, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamFriends() == NULL, false, "[STEAM] Friends class not found when calling: setRichPresence");
+	ERR_FAIL_COND_V_MSG(SteamFriends() == nullptr, false, "[STEAM] Friends class not found when calling: setRichPresence");
 	return SteamFriends()->SetRichPresence(key.utf8().get_data(), value.utf8().get_data());
 }
 
@@ -1533,7 +1541,7 @@ bool Steam::setRichPresence(const String &key, const String &value) {
 // A keyname and a list of comma separated values: one of which is must be found in order for the match to qualify; fails if a
 // search is currently in progress.
 int Steam::addGameSearchParams(const String &key, const String &values) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: addGameSearchParams");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: addGameSearchParams");
 	return SteamGameSearch()->AddGameSearchParams(key.utf8().get_data(), values.utf8().get_data());
 }
 
@@ -1541,7 +1549,7 @@ int Steam::addGameSearchParams(const String &key, const String &values) {
 // currently in progress. If not the owner of the lobby or search already in progress this call fails. Periodic callbacks will be
 // sent as queue time estimates change.
 int Steam::searchForGameWithLobby(uint64_t lobby_id, int player_min, int player_max) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: searchForGameWithLobby");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: searchForGameWithLobby");
 	CSteamID lobby = (uint64)lobby_id;
 	return SteamGameSearch()->SearchForGameWithLobby(lobby, player_min, player_max);
 }
@@ -1549,27 +1557,27 @@ int Steam::searchForGameWithLobby(uint64_t lobby_id, int player_min, int player_
 // User enter the queue and await a SearchForGameNotificationCallback_t callback. fails if another search is currently in progress.
 // Periodic callbacks will be sent as queue time estimates change.
 int Steam::searchForGameSolo(int player_min, int player_max) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: searchForGameSolo");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: searchForGameSolo");
 	return SteamGameSearch()->SearchForGameSolo(player_min, player_max);
 }
 
 // After receiving SearchForGameResultCallback_t, accept or decline the game. Multiple SearchForGameResultCallback_t will follow
 // as players accept game until the host starts or cancels the game.
 int Steam::acceptGame() {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: acceptGame");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: acceptGame");
 	return SteamGameSearch()->AcceptGame();
 }
 
 // After receiving SearchForGameResultCallback_t, accept or decline the game. Multiple SearchForGameResultCallback_t will follow
 // as players accept game until the host starts or cancels the game.
 int Steam::declineGame() {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: declineGame");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: declineGame");
 	return SteamGameSearch()->DeclineGame();
 }
 
 // After receiving GameStartedByHostCallback_t get connection details to server.
 String Steam::retrieveConnectionDetails(uint64_t host_id) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, "", "[STEAM] Game Search class not found when calling: retrieveConnectionDetails");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, "", "[STEAM] Game Search class not found when calling: retrieveConnectionDetails");
 	CSteamID host = (uint64)host_id;
 	char connection_details[256 + 1]{};
 	SteamGameSearch()->RetrieveConnectionDetails(host, connection_details, 256);
@@ -1578,51 +1586,51 @@ String Steam::retrieveConnectionDetails(uint64_t host_id) {
 
 // Leaves queue if still waiting.
 int Steam::endGameSearch() {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: endGameSearch");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: endGameSearch");
 	return SteamGameSearch()->EndGameSearch();
 }
 
 // A keyname and a list of comma separated values: all the values you allow.
 int Steam::setGameHostParams(const String &key, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: setGameHostParams");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: setGameHostParams");
 	return SteamGameSearch()->SetGameHostParams(key.utf8().get_data(), value.utf8().get_data());
 }
 
 // Set connection details for players once game is found so they can connect to this server.
 int Steam::setConnectionDetails(const String &details, int connection_details) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: setConnectionDetails");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: setConnectionDetails");
 	return SteamGameSearch()->SetConnectionDetails(details.utf8().get_data(), connection_details);
 }
 
 // Mark server as available for more players with nPlayerMin,nPlayerMax desired. Accept no lobbies with playercount greater than
 // nMaxTeamSize.
 int Steam::requestPlayersForGame(int player_min, int player_max, int max_team_size) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: requestPlayersForGame");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: requestPlayersForGame");
 	return SteamGameSearch()->RequestPlayersForGame(player_min, player_max, max_team_size);
 }
 
 // Accept the player list and release connection details to players.
 int Steam::hostConfirmGameStart(uint64_t game_id) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: hostConfirmGameStart");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: hostConfirmGameStart");
 	return SteamGameSearch()->HostConfirmGameStart(game_id);
 }
 
 // Cancel request and leave the pool of game hosts looking for players.
 int Steam::cancelRequestPlayersForGame() {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: cancelRequestPlayersForGame");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: cancelRequestPlayersForGame");
 	return SteamGameSearch()->CancelRequestPlayersForGame();
 }
 
 // Submit a result for one player. does not end the game. ullUniqueGameID continues to describe this game.
 int Steam::submitPlayerResult(uint64_t game_id, uint64_t player_id, PlayerResult player_result) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: submitPlayerResult");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: submitPlayerResult");
 	CSteamID player = (uint64)player_id;
 	return SteamGameSearch()->SubmitPlayerResult(game_id, player, (EPlayerResult_t)player_result);
 }
 
 // Ends the game. no further SubmitPlayerResults for ullUniqueGameID will be accepted.
 int Steam::endGame(uint64_t game_id) {
-	ERR_FAIL_COND_V_MSG(SteamGameSearch() == NULL, 9, "[STEAM] Game Search class not found when calling: endGame");
+	ERR_FAIL_COND_V_MSG(SteamGameSearch() == nullptr, 9, "[STEAM] Game Search class not found when calling: endGame");
 	return SteamGameSearch()->EndGame(game_id);
 }
 
@@ -1631,7 +1639,7 @@ int Steam::endGame(uint64_t game_id) {
 
 // Add a header to any HTTP requests from this browser.
 void Steam::addHeader(const String &key, const String &value, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: addHeader");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: addHeader");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1641,7 +1649,7 @@ void Steam::addHeader(const String &key, const String &value, uint32 this_handle
 // Sets whether a pending load is allowed or if it should be canceled.  NOTE:You MUST call this in response to a HTML_StartRequest_t
 // callback.
 void Steam::allowStartRequest(bool allowed, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: allowStartRequest");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: allowStartRequest");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1650,7 +1658,7 @@ void Steam::allowStartRequest(bool allowed, uint32 this_handle) {
 
 // Copy the currently selected text from the current page in an HTML surface into the local clipboard.
 void Steam::copyToClipboard(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: copyToClipboard");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: copyToClipboard");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1660,7 +1668,7 @@ void Steam::copyToClipboard(uint32 this_handle) {
 // Create a browser object for displaying of an HTML page. NOTE: You MUST call RemoveBrowser when you are done using this browser
 // to free up the resources associated with it. Failing to do so will result in a memory leak.
 void Steam::createBrowser(const String &user_agent, const String &user_css) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: createBrowser");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: createBrowser");
 	auto user_agent_utf8 = user_agent.utf8();
 	const char *this_user_agent = nullptr;
 	if (!user_agent.is_empty()) {
@@ -1679,7 +1687,7 @@ void Steam::createBrowser(const String &user_agent, const String &user_css) {
 
 // Run a javascript script in the currently loaded page.
 void Steam::executeJavascript(const String &javascript, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: executeJavascript");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: executeJavascript");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1689,7 +1697,7 @@ void Steam::executeJavascript(const String &javascript, uint32 this_handle) {
 // Find a string in the current page of an HTML surface. This is the equivalent of "ctrl+f" in your browser of choice. It will
 // highlight all of the matching strings. You should call StopFind when the input string has changed or you want to stop searching.
 void Steam::find(const String &search, bool currently_in_find, bool reverse, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: find");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: find");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1698,7 +1706,7 @@ void Steam::find(const String &search, bool currently_in_find, bool reverse, uin
 
 // Retrieves details about a link at a specific position on the current page in an HTML surface.
 void Steam::getLinkAtPosition(int x, int y, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: getLinkAtPosition");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: getLinkAtPosition");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1707,7 +1715,7 @@ void Steam::getLinkAtPosition(int x, int y, uint32 this_handle) {
 
 // Navigate back in the page history.
 void Steam::goBack(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: goBack");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: goBack");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1716,7 +1724,7 @@ void Steam::goBack(uint32 this_handle) {
 
 // Navigate forward in the page history
 void Steam::goForward(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: goForward");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: goForward");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1727,13 +1735,13 @@ void Steam::goForward(uint32 this_handle) {
 // Shutdown when you are done using the interface to free up the resources associated with it. Failing to do so will result in a
 // memory leak!
 bool Steam::htmlInit() {
-	ERR_FAIL_COND_V_MSG(SteamHTMLSurface() == NULL, false, "[STEAM] HTML Surface class not found when calling: htmlInit");
+	ERR_FAIL_COND_V_MSG(SteamHTMLSurface() == nullptr, false, "[STEAM] HTML Surface class not found when calling: htmlInit");
 	return SteamHTMLSurface()->Init();
 }
 
 // Allows you to react to a page wanting to open a javascript modal dialog notification.
 void Steam::jsDialogResponse(bool result, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: jsDialogResponse");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: jsDialogResponse");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1742,7 +1750,7 @@ void Steam::jsDialogResponse(bool result, uint32 this_handle) {
 
 // cUnicodeChar is the unicode character point for this keypress (and potentially multiple chars per press).
 void Steam::keyChar(uint32 unicode_char, BitField<HTMLKeyModifiers> key_modifiers, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: keyChar");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: keyChar");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1751,7 +1759,7 @@ void Steam::keyChar(uint32 unicode_char, BitField<HTMLKeyModifiers> key_modifier
 
 // Keyboard interactions, native keycode is the virtual key code value from your OS.
 void Steam::keyDown(uint32 native_key_code, BitField<HTMLKeyModifiers> key_modifiers, uint32 this_handle, bool is_system_key) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: keyDown");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: keyDown");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1760,7 +1768,7 @@ void Steam::keyDown(uint32 native_key_code, BitField<HTMLKeyModifiers> key_modif
 
 // Keyboard interactions, native keycode is the virtual key code value from your OS.
 void Steam::keyUp(uint32 native_key_code, BitField<HTMLKeyModifiers> key_modifiers, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: keyUp");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: keyUp");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1771,7 +1779,7 @@ void Steam::keyUp(uint32 native_key_code, BitField<HTMLKeyModifiers> key_modifie
 // name1=value1&name2=value2. You can load any URI scheme supported by Chromium Embedded Framework including but not limited to:
 // http://, https://, ftp://, and file:///. If no scheme is specified then http:// is used.
 void Steam::loadURL(const String &url, const String &post_data, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: loadURL");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: loadURL");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1781,7 +1789,7 @@ void Steam::loadURL(const String &url, const String &post_data, uint32 this_hand
 // Tells an HTML surface that a mouse button has been double clicked. The click will occur where the surface thinks the mouse is
 // based on the last call to MouseMove.
 void Steam::mouseDoubleClick(HTMLMouseButton mouse_button, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: mouseDoubleClick");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: mouseDoubleClick");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1791,7 +1799,7 @@ void Steam::mouseDoubleClick(HTMLMouseButton mouse_button, uint32 this_handle) {
 // Tells an HTML surface that a mouse button has been pressed. The click will occur where the surface thinks the mouse is based on
 // the last call to MouseMove.
 void Steam::mouseDown(HTMLMouseButton mouse_button, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: mouseDown");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: mouseDown");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1800,7 +1808,7 @@ void Steam::mouseDown(HTMLMouseButton mouse_button, uint32 this_handle) {
 
 // Tells an HTML surface where the mouse is.
 void Steam::mouseMove(int x, int y, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: mouseMove");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: mouseMove");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1810,7 +1818,7 @@ void Steam::mouseMove(int x, int y, uint32 this_handle) {
 // Tells an HTML surface that a mouse button has been released. The click will occur where the surface thinks the mouse is based on
 // the last call to MouseMove.
 void Steam::mouseUp(HTMLMouseButton mouse_button, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: mouseUp");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: mouseUp");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1819,7 +1827,7 @@ void Steam::mouseUp(HTMLMouseButton mouse_button, uint32 this_handle) {
 
 // Tells an HTML surface that the mouse wheel has moved.
 void Steam::mouseWheel(int32 delta, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: mouseWheel");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: mouseWheel");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1828,7 +1836,7 @@ void Steam::mouseWheel(int32 delta, uint32 this_handle) {
 
 // Open HTML/JS developer tools
 void Steam::openDeveloperTools(uint32 this_handle){
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: openDeveloperTools");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: openDeveloperTools");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1837,7 +1845,7 @@ void Steam::openDeveloperTools(uint32 this_handle){
 
 // Paste from the local clipboard to the current page in an HTML surface.
 void Steam::pasteFromClipboard(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: pasteFromClipboard");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: pasteFromClipboard");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1847,7 +1855,7 @@ void Steam::pasteFromClipboard(uint32 this_handle) {
 // Refreshes the current page. The reload will most likely hit the local cache instead of going over the network. This is
 // equivalent to F5 or Ctrl+R in your browser of choice.
 void Steam::reload(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: reload");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: reload");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1857,7 +1865,7 @@ void Steam::reload(uint32 this_handle) {
 // You MUST call this when you are done with an HTML surface, freeing the resources associated with it. Failing to call this will
 // result in a memory leak!
 void Steam::removeBrowser(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: removeBrowser");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: removeBrowser");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1869,7 +1877,7 @@ void Steam::removeBrowser(uint32 this_handle) {
 // will execute ".pause()" and gain the property "._steam_background_paused = 1". When background mode is disabled, any video or
 // audio objects with that property will resume with ".play()".
 void Steam::setBackgroundMode(bool background_mode, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setBackgroundMode");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setBackgroundMode");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1878,14 +1886,14 @@ void Steam::setBackgroundMode(bool background_mode, uint32 this_handle) {
 
 // Set a webcookie for a specific hostname. You can read more about the specifics of setting cookies here on wikipedia.
 void Steam::setCookie(const String &hostname, const String &key, const String &value, const String &path, uint32 expires, bool secure, bool http_only) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setCookie");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setCookie");
 	SteamHTMLSurface()->SetCookie(hostname.utf8().get_data(), key.utf8().get_data(), value.utf8().get_data(), path.utf8().get_data(), expires, secure, http_only);
 }
 
 // Scale the output display space by this factor, this is useful when displaying content on high dpi devices.
 // Specifies the ratio between physical and logical pixels.
 void Steam::setDPIScalingFactor(float dpi_scaling, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setDPIScalingFactor");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setDPIScalingFactor");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1894,7 +1902,7 @@ void Steam::setDPIScalingFactor(float dpi_scaling, uint32 this_handle) {
 
 // Scroll the current page horizontally.
 void Steam::setHorizontalScroll(uint32 absolute_pixel_scroll, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setHorizontalScroll");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setHorizontalScroll");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1903,7 +1911,7 @@ void Steam::setHorizontalScroll(uint32 absolute_pixel_scroll, uint32 this_handle
 
 // Tell a HTML surface if it has key focus currently, controls showing the I-beam cursor in text controls amongst other things.
 void Steam::setKeyFocus(bool has_key_focus, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setKeyFocus");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setKeyFocus");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1913,7 +1921,7 @@ void Steam::setKeyFocus(bool has_key_focus, uint32 this_handle) {
 // Zoom the current page in an HTML surface. The current scale factor is available from HTML_NeedsPaint_t.flPageScale,
 // HTML_HorizontalScroll_t.flPageScale, and HTML_VerticalScroll_t.flPageScale.
 void Steam::setPageScaleFactor(float zoom, int point_x, int point_y, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setPageScaleFactor");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setPageScaleFactor");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1922,7 +1930,7 @@ void Steam::setPageScaleFactor(float zoom, int point_x, int point_y, uint32 this
 
 // Sets the display size of a surface in pixels.
 void Steam::setSize(uint32 width, uint32 height, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setSize");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setSize");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1931,7 +1939,7 @@ void Steam::setSize(uint32 width, uint32 height, uint32 this_handle) {
 
 // Scroll the current page vertically.
 void Steam::setVerticalScroll(uint32 absolute_pixel_scroll, uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: setVerticalScroll");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: setVerticalScroll");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1942,13 +1950,13 @@ void Steam::setVerticalScroll(uint32 absolute_pixel_scroll, uint32 this_handle) 
 // interface to prevent memory and handle leaks. After calling this then all of the functions provided in this interface will fail
 // until you call Init to reinitialize again.
 bool Steam::htmlShutdown() {
-	ERR_FAIL_COND_V_MSG(SteamHTMLSurface() == NULL, false, "[STEAM] HTML Surface class not found when calling: htmlShutdown");
+	ERR_FAIL_COND_V_MSG(SteamHTMLSurface() == nullptr, false, "[STEAM] HTML Surface class not found when calling: htmlShutdown");
 	return SteamHTMLSurface()->Shutdown();
 }
 
 // Cancel a currently running find.
 void Steam::stopFind(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: stopFind");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: stopFind");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1957,7 +1965,7 @@ void Steam::stopFind(uint32 this_handle) {
 
 // Stop the load of the current HTML page.
 void Steam::stopLoad(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: stopLoad");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: stopLoad");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1966,7 +1974,7 @@ void Steam::stopLoad(uint32 this_handle) {
 
 // Open the current pages HTML source code in default local text editor, used for debugging.
 void Steam::viewSource(uint32 this_handle) {
-	ERR_FAIL_COND_MSG(SteamHTMLSurface() == NULL, "[STEAM] HTML Surface class not found when calling: viewSource");
+	ERR_FAIL_COND_MSG(SteamHTMLSurface() == nullptr, "[STEAM] HTML Surface class not found when calling: viewSource");
 	if (this_handle == 0) {
 		this_handle = browser_handle;
 	}
@@ -1980,26 +1988,26 @@ void Steam::viewSource(uint32 this_handle) {
 // after steam restarts no cookies are persisted and you have no way to access the cookie container across repeat executions of
 // your process.
 uint32_t Steam::createCookieContainer(bool allow_responses_to_modify) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, 0, "[STEAM] HTTP class not found when calling: createCookieContainer");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, 0, "[STEAM] HTTP class not found when calling: createCookieContainer");
 	return SteamHTTP()->CreateCookieContainer(allow_responses_to_modify);
 }
 
 // Initializes a new HTTP request.
 uint32_t Steam::createHTTPRequest(HTTPMethod request_method, const String &absolute_url) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, HTTPREQUEST_INVALID_HANDLE, "[STEAM] HTTP class not found when calling: createCookieContainer");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, HTTPREQUEST_INVALID_HANDLE, "[STEAM] HTTP class not found when calling: createCookieContainer");
 	return SteamHTTP()->CreateHTTPRequest((EHTTPMethod)request_method, absolute_url.utf8().get_data());
 }
 
 // Defers a request which has already been sent by moving it at the back of the queue.
 bool Steam::deferHTTPRequest(uint32 request_handle) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: deferHTTPRequest");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: deferHTTPRequest");
 	return SteamHTTP()->DeferHTTPRequest(request_handle);
 }
 
 // Gets progress on downloading the body for the request.
 float Steam::getHTTPDownloadProgressPct(uint32 request_handle) {
 	float percent_one = 0.0;
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, percent_one, "[STEAM] HTTP class not found when calling: getHTTPDownloadProgressPct");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, percent_one, "[STEAM] HTTP class not found when calling: getHTTPDownloadProgressPct");
 	SteamHTTP()->GetHTTPDownloadProgressPct(request_handle, &percent_one);
 	return percent_one;
 }
@@ -2007,7 +2015,7 @@ float Steam::getHTTPDownloadProgressPct(uint32 request_handle) {
 // Check if the reason the request failed was because we timed it out (rather than some harder failure).
 bool Steam::getHTTPRequestWasTimedOut(uint32 request_handle) {
 	bool was_timed_out = false;
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, was_timed_out, "[STEAM] HTTP class not found when calling: getHTTPRequestWasTimedOut");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, was_timed_out, "[STEAM] HTTP class not found when calling: getHTTPRequestWasTimedOut");
 	SteamHTTP()->GetHTTPRequestWasTimedOut(request_handle, &was_timed_out);
 	return was_timed_out;
 }
@@ -2015,7 +2023,7 @@ bool Steam::getHTTPRequestWasTimedOut(uint32 request_handle) {
 // Gets the body data from an HTTP response.
 PackedByteArray Steam::getHTTPResponseBodyData(uint32 request_handle, uint32 buffer_size) {
 	PackedByteArray body_data;
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, body_data, "[STEAM] HTTP class not found when calling: getHTTPResponseBodyData");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, body_data, "[STEAM] HTTP class not found when calling: getHTTPResponseBodyData");
 	body_data.resize(buffer_size);
 	SteamHTTP()->GetHTTPResponseBodyData(request_handle, body_data.ptrw(), buffer_size);
 	return body_data;
@@ -2024,7 +2032,7 @@ PackedByteArray Steam::getHTTPResponseBodyData(uint32 request_handle, uint32 buf
 // Gets the size of the body data from an HTTP response.
 uint32 Steam::getHTTPResponseBodySize(uint32 request_handle) {
 	uint32 body_size = 0;
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, body_size, "[STEAM] HTTP class not found when calling: getHTTPResponseBodySize");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, body_size, "[STEAM] HTTP class not found when calling: getHTTPResponseBodySize");
 	SteamHTTP()->GetHTTPResponseBodySize(request_handle, &body_size);
 	return body_size;
 }
@@ -2032,7 +2040,7 @@ uint32 Steam::getHTTPResponseBodySize(uint32 request_handle) {
 // Checks if a header is present in an HTTP response and returns its size.
 uint32 Steam::getHTTPResponseHeaderSize(uint32 request_handle, const String &header_name) {
 	uint32 response_header_size = 0;
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, response_header_size, "[STEAM] HTTP class not found when calling: getHTTPResponseHeaderSize");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, response_header_size, "[STEAM] HTTP class not found when calling: getHTTPResponseHeaderSize");
 	SteamHTTP()->GetHTTPResponseHeaderSize(request_handle, header_name.utf8().get_data(), &response_header_size);
 	return response_header_size;
 }
@@ -2040,7 +2048,7 @@ uint32 Steam::getHTTPResponseHeaderSize(uint32 request_handle, const String &hea
 // Gets a header value from an HTTP response.
 PackedByteArray Steam::getHTTPResponseHeaderValue(uint32 request_handle, const String &header_name, uint32 buffer_size) {
 	PackedByteArray header_data;
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, header_data, "[STEAM] HTTP class not found when calling: getHTTPResponseHeaderValue");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, header_data, "[STEAM] HTTP class not found when calling: getHTTPResponseHeaderValue");
 	header_data.resize(buffer_size);
 	SteamHTTP()->GetHTTPResponseHeaderValue(request_handle, header_name.utf8().get_data(), header_data.ptrw(), buffer_size);
 	return header_data;
@@ -2049,7 +2057,7 @@ PackedByteArray Steam::getHTTPResponseHeaderValue(uint32 request_handle, const S
 // Gets the body data from a streaming HTTP response.
 PackedByteArray Steam::getHTTPStreamingResponseBodyData(uint32 request_handle, uint32 offset, uint32 buffer_size) {
 	PackedByteArray body_data;
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, body_data, "[STEAM] HTTP class not found when calling: getHTTPStreamingResponseBodyData");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, body_data, "[STEAM] HTTP class not found when calling: getHTTPStreamingResponseBodyData");
 	body_data.resize(buffer_size);
 	SteamHTTP()->GetHTTPStreamingResponseBodyData(request_handle, offset, body_data.ptrw(), buffer_size);
 	return body_data;
@@ -2057,46 +2065,46 @@ PackedByteArray Steam::getHTTPStreamingResponseBodyData(uint32 request_handle, u
 
 // Prioritizes a request which has already been sent by moving it at the front of the queue.
 bool Steam::prioritizeHTTPRequest(uint32 request_handle) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: prioritizeHTTPRequest");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: prioritizeHTTPRequest");
 	return SteamHTTP()->PrioritizeHTTPRequest(request_handle);
 }
 
 // Releases a cookie container, freeing the memory allocated within Steam.
 bool Steam::releaseCookieContainer(uint32 cookie_handle) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: releaseCookieContainer");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: releaseCookieContainer");
 	return SteamHTTP()->ReleaseCookieContainer(cookie_handle);
 }
 
 // Releases an HTTP request handle, freeing the memory allocated within Steam.
 bool Steam::releaseHTTPRequest(uint32 request_handle) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: releaseHTTPRequest");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: releaseHTTPRequest");
 	return SteamHTTP()->ReleaseHTTPRequest(request_handle);
 }
 
 // Sends an HTTP request.
 bool Steam::sendHTTPRequest(uint32 request_handle) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: sendHTTPRequest");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: sendHTTPRequest");
 	SteamAPICall_t call_handle;
 	return SteamHTTP()->SendHTTPRequest(request_handle, &call_handle);
 }
 
 // Sends an HTTP request and streams the response back in chunks.
 bool Steam::sendHTTPRequestAndStreamResponse(uint32 request_handle) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: sendHTTPRequestAndStreamResponse");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: sendHTTPRequestAndStreamResponse");
 	SteamAPICall_t call_handle;
 	return SteamHTTP()->SendHTTPRequestAndStreamResponse(request_handle, &call_handle);
 }
 
 // Adds a cookie to the specified cookie container that will be used with future requests.
 bool Steam::setHTTPCookie(uint32 cookie_handle, const String &host, const String &url, const String &cookie) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPCookie");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPCookie");
 	return SteamHTTP()->SetCookie(cookie_handle, host.utf8().get_data(), url.utf8().get_data(), cookie.utf8().get_data());
 }
 
 // Set an absolute timeout in milliseconds for the HTTP request. This is the total time timeout which is different than the
 // network activity timeout which is set with SetHTTPRequestNetworkActivityTimeout which can bump everytime we get more data.
 bool Steam::setHTTPRequestAbsoluteTimeoutMS(uint32 request_handle, uint32 milliseconds) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestAbsoluteTimeoutMS");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestAbsoluteTimeoutMS");
 	return SteamHTTP()->SetHTTPRequestAbsoluteTimeoutMS(request_handle, milliseconds);
 }
 
@@ -2104,37 +2112,37 @@ bool Steam::setHTTPRequestAbsoluteTimeoutMS(uint32 request_handle, uint32 millis
 // This is just so the caller can easily keep track of which callbacks go with which request data. Must be called before sending
 // the request.
 bool Steam::setHTTPRequestContextValue(uint32 request_handle, uint64_t context_value) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestContextValue");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestContextValue");
 	return SteamHTTP()->SetHTTPRequestContextValue(request_handle, context_value);
 }
 
 // Associates a cookie container to use for an HTTP request.
 bool Steam::setHTTPRequestCookieContainer(uint32 request_handle, uint32 cookie_handle) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestCookieContainer");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestCookieContainer");
 	return SteamHTTP()->SetHTTPRequestCookieContainer(request_handle, cookie_handle);
 }
 
 // Set a GET or POST parameter value on the HTTP request. Must be called prior to sending the request.
 bool Steam::setHTTPRequestGetOrPostParameter(uint32 request_handle, const String &name, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestGetOrPostParameter");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestGetOrPostParameter");
 	return SteamHTTP()->SetHTTPRequestGetOrPostParameter(request_handle, name.utf8().get_data(), value.utf8().get_data());
 }
 
 // Set a request header value for the HTTP request. Must be called before sending the request.
 bool Steam::setHTTPRequestHeaderValue(uint32 request_handle, const String &header_name, const String &header_value) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestHeaderValue");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestHeaderValue");
 	return SteamHTTP()->SetHTTPRequestHeaderValue(request_handle, header_name.utf8().get_data(), header_value.utf8().get_data());
 }
 
 // Set the timeout in seconds for the HTTP request.
 bool Steam::setHTTPRequestNetworkActivityTimeout(uint32 request_handle, uint32 timeout_seconds) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestNetworkActivityTimeout");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestNetworkActivityTimeout");
 	return SteamHTTP()->SetHTTPRequestNetworkActivityTimeout(request_handle, timeout_seconds);
 }
 
 // Sets the body for an HTTP Post request.
 bool Steam::setHTTPRequestRawPostBody(uint32 request_handle, const String &content_type, const String &body) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestRawPostBody");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestRawPostBody");
 	auto body_utf8 = body.utf8();
 	return SteamHTTP()->SetHTTPRequestRawPostBody(request_handle, content_type.utf8().get_data(), reinterpret_cast<uint8 *>(body_utf8.ptrw()), body_utf8.size());
 }
@@ -2142,13 +2150,13 @@ bool Steam::setHTTPRequestRawPostBody(uint32 request_handle, const String &conte
 // Sets that the HTTPS request should require verified SSL certificate via machines certificate trust store. This currently only
 // works Windows and macOS.
 bool Steam::setHTTPRequestRequiresVerifiedCertificate(uint32 request_handle, bool require_verified_certificate) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestNetworkActivityTimeout");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestNetworkActivityTimeout");
 	return SteamHTTP()->SetHTTPRequestRequiresVerifiedCertificate(request_handle, require_verified_certificate);
 }
 
 // Set additional user agent info for a request.
 bool Steam::setHTTPRequestUserAgentInfo(uint32 request_handle, const String &user_agent_info) {
-	ERR_FAIL_COND_V_MSG(SteamHTTP() == NULL, false, "[STEAM] HTTP class not found when calling: setHTTPRequestNetworkActivityTimeout");
+	ERR_FAIL_COND_V_MSG(SteamHTTP() == nullptr, false, "[STEAM] HTTP class not found when calling: setHTTPRequestNetworkActivityTimeout");
 	return SteamHTTP()->SetHTTPRequestUserAgentInfo(request_handle, user_agent_info.utf8().get_data());
 }
 
@@ -2157,25 +2165,25 @@ bool Steam::setHTTPRequestUserAgentInfo(uint32 request_handle, const String &use
 
 // Reconfigure the controller to use the specified action set.
 void Steam::activateActionSet(uint64_t input_handle, uint64_t action_set_handle) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: activateActionSet");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: activateActionSet");
 	SteamInput()->ActivateActionSet((InputHandle_t)input_handle, (ControllerActionSetHandle_t)action_set_handle);
 }
 
 // Reconfigure the controller to use the specified action set layer.
 void Steam::activateActionSetLayer(uint64_t input_handle, uint64_t action_set_layer_handle) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: activateActionSetLayer");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: activateActionSetLayer");
 	SteamInput()->ActivateActionSetLayer((InputHandle_t)input_handle, (ControllerActionSetHandle_t)action_set_layer_handle);
 }
 
 // Reconfigure the controller to stop using the specified action set.
 void Steam::deactivateActionSetLayer(uint64_t input_handle, uint64_t action_set_handle) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL,  "[STEAM] Input not found when calling: deactivateActionSetLayer");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr,  "[STEAM] Input not found when calling: deactivateActionSetLayer");
 	SteamInput()->DeactivateActionSetLayer((InputHandle_t)input_handle, (ControllerActionSetHandle_t)action_set_handle);
 }
 
 // Reconfigure the controller to stop using all action set layers.
 void Steam::deactivateAllActionSetLayers(uint64_t input_handle) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: deactivateAllActionSetLayers");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: deactivateAllActionSetLayers");
 	SteamInput()->DeactivateAllActionSetLayers((InputHandle_t)input_handle);
 }
 
@@ -2183,7 +2191,7 @@ void Steam::deactivateAllActionSetLayers(uint64_t input_handle) {
 // Supports one callback at a time.
 // Note: this is called within either SteamInput()->RunFrame or by SteamAPI_RunCallbacks
 void Steam::enableActionEventCallbacks() {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: enableActionEventCallbacks");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: enableActionEventCallbacks");
 	SteamInputActionEventCallbackPointer callback = [](SteamInputActionEvent_t *call_data){
 		Steam::get_singleton()->inputActionEventCallback(call_data);
 	};
@@ -2193,27 +2201,27 @@ void Steam::enableActionEventCallbacks() {
 // Enable SteamInputDeviceConnected_t and SteamInputDeviceDisconnected_t callbacks. Each controller that is already connected
 // will generate a device connected callback when you enable them.
 void Steam::enableDeviceCallbacks() {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: enableDeviceCallbacks");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: enableDeviceCallbacks");
 	SteamInput()->EnableDeviceCallbacks();
 }
 
 // Lookup the handle for an Action Set. Best to do this once on startup, and store the handles for all future API calls.
 uint64_t Steam::getActionSetHandle(const String &action_set_name) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: activateActionSet");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: activateActionSet");
 	return (uint64_t)SteamInput()->GetActionSetHandle(action_set_name.utf8().get_data());
 }
 
 // Get an action origin that you can use in your glyph look up table or passed into GetGlyphForActionOrigin or
 // GetStringForActionOrigin.
 InputActionOrigin Steam::getActionOriginFromXboxOrigin(uint64_t input_handle, int origin) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, INPUT_ACTION_ORIGIN_NONE, "[STEAM] Input not found when calling: getActionOriginFromXboxOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, INPUT_ACTION_ORIGIN_NONE, "[STEAM] Input not found when calling: getActionOriginFromXboxOrigin");
 	return InputActionOrigin(SteamInput()->GetActionOriginFromXboxOrigin((InputHandle_t)input_handle, (EXboxOrigin)origin));
 }
 
 // Fill an array with all of the currently active action set layers for a specified controller handle.
 Array Steam::getActiveActionSetLayers(uint64_t input_handle) {
 	Array handles;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, handles, "[STEAM] Input not found when calling: getActiveActionSetLayers");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, handles, "[STEAM] Input not found when calling: getActiveActionSetLayers");
 	InputActionSetHandle_t out[INPUT_MAX_COUNT];
 	int ret = SteamInput()->GetActiveActionSetLayers(input_handle, out);
 	for (int i = 0; i < ret; i++) {
@@ -2225,7 +2233,7 @@ Array Steam::getActiveActionSetLayers(uint64_t input_handle) {
 // Returns the current state of the supplied analog game action.
 Dictionary Steam::getAnalogActionData(uint64_t input_handle, uint64_t analog_action_handle) {
 	Dictionary action_data;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, action_data, "[STEAM] Input not found when calling: getAnalogActionData");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, action_data, "[STEAM] Input not found when calling: getAnalogActionData");
 	ControllerAnalogActionData_t data;
 	memset(&data, 0, sizeof(data));
 	if (SteamInput() != NULL) {
@@ -2240,14 +2248,14 @@ Dictionary Steam::getAnalogActionData(uint64_t input_handle, uint64_t analog_act
 
 // Get the handle of the specified Analog action.
 uint64_t Steam::getAnalogActionHandle(const String &action_name) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: getAnalogActionHandle");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: getAnalogActionHandle");
 	return (uint64_t)SteamInput()->GetAnalogActionHandle(action_name.utf8().get_data());
 }
 
 // Get the origin(s) for an analog action within an action.
 Array Steam::getAnalogActionOrigins(uint64_t input_handle, uint64_t action_set_handle, uint64_t analog_action_handle) {
 	Array list;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, list, "[STEAM] Input not found when calling: getAnalogActionOrigins");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, list, "[STEAM] Input not found when calling: getAnalogActionOrigins");
 	EInputActionOrigin out[STEAM_CONTROLLER_MAX_ORIGINS];
 	int ret = SteamInput()->GetAnalogActionOrigins((InputHandle_t)input_handle, (ControllerActionSetHandle_t)action_set_handle, (ControllerAnalogActionHandle_t)analog_action_handle, out);
 	for (int i = 0; i < ret; i++) {
@@ -2259,7 +2267,7 @@ Array Steam::getAnalogActionOrigins(uint64_t input_handle, uint64_t action_set_h
 // Get current controllers handles.
 Array Steam::getConnectedControllers() {
 	Array list;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, list, "[STEAM] Input not found when calling: getConnectedControllers");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, list, "[STEAM] Input not found when calling: getConnectedControllers");
 	InputHandle_t handles[INPUT_MAX_COUNT];
 	int ret = SteamInput()->GetConnectedControllers(handles);
 	printf("[Steam] Inputs found %d controllers.", ret);
@@ -2271,13 +2279,13 @@ Array Steam::getConnectedControllers() {
 
 // Returns the associated controller handle for the specified emulated gamepad.
 uint64_t Steam::getControllerForGamepadIndex(int index) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: getControllerForGamepadIndex");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: getControllerForGamepadIndex");
 	return (uint64_t)SteamInput()->GetControllerForGamepadIndex(index);
 }
 
 // Get the currently active action set for the specified controller.
 uint64_t Steam::getCurrentActionSet(uint64_t input_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: getCurrentActionSet");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: getCurrentActionSet");
 	return (uint64_t)SteamInput()->GetCurrentActionSet((InputHandle_t)input_handle);
 }
 
@@ -2289,7 +2297,7 @@ uint64_t Steam::getCurrentActionSet(uint64_t input_handle) {
 // the new configuration. New configurations will need to be made for every controller when updating the Major revision.
 Array Steam::getDeviceBindingRevision(uint64_t input_handle) {
 	Array revision;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, revision, "[STEAM] Input not found when calling: getDeviceBindingRevision");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, revision, "[STEAM] Input not found when calling: getDeviceBindingRevision");
 	int major = 0;
 	int minor = 0;
 	bool success = SteamInput()->GetDeviceBindingRevision((InputHandle_t)input_handle, &major, &minor);
@@ -2303,7 +2311,7 @@ Array Steam::getDeviceBindingRevision(uint64_t input_handle) {
 // Returns the current state of the supplied digital game action.
 Dictionary Steam::getDigitalActionData(uint64_t input_handle, uint64_t digital_action_handle) {
 	Dictionary digital_action;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, digital_action, "[STEAM] Input not found when calling: getDigitalActionData");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, digital_action, "[STEAM] Input not found when calling: getDigitalActionData");
 	InputDigitalActionData_t data;
 	memset(&data, 0, sizeof(data));
 	if (SteamInput() != NULL) {
@@ -2316,14 +2324,14 @@ Dictionary Steam::getDigitalActionData(uint64_t input_handle, uint64_t digital_a
 
 // Get the handle of the specified digital action.
 uint64_t Steam::getDigitalActionHandle(const String &action_name) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: getDigitalActionHandle");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: getDigitalActionHandle");
 	return (uint64_t)SteamInput()->GetDigitalActionHandle(action_name.utf8().get_data());
 }
 
 // Get the origin(s) for an analog action within an action.
 Array Steam::getDigitalActionOrigins(uint64_t input_handle, uint64_t action_set_handle, uint64_t digital_action_handle) {
 	Array list;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, list, "[STEAM] Input not found when calling: getDigitalActionOrigins");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, list, "[STEAM] Input not found when calling: getDigitalActionOrigins");
 	EInputActionOrigin out[STEAM_CONTROLLER_MAX_ORIGINS];
 	int ret = SteamInput()->GetDigitalActionOrigins((InputHandle_t)input_handle, (ControllerActionSetHandle_t)action_set_handle, (ControllerDigitalActionHandle_t)digital_action_handle, out);
 	for (int i = 0; i < ret; i++) {
@@ -2334,38 +2342,38 @@ Array Steam::getDigitalActionOrigins(uint64_t input_handle, uint64_t action_set_
 
 // Returns the associated gamepad index for the specified controller.
 int Steam::getGamepadIndexForController(uint64_t input_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, -1, "[STEAM] Input not found when calling: getGamepadIndexForController");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, -1, "[STEAM] Input not found when calling: getGamepadIndexForController");
 	return SteamInput()->GetGamepadIndexForController((InputHandle_t)input_handle);
 }
 
 // Get a local path to art for on-screen glyph for a particular origin.
 String Steam::getGlyphForActionOrigin(InputActionOrigin origin) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getGlyphForActionOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getGlyphForActionOrigin");
 	ERR_FAIL_COND_V_MSG(origin < 0 || origin > InputActionOrigin(k_EInputActionOrigin_MaximumPossibleValue), "", "[Steam] origin is invalid for getGlyphForActionOrigin");
 	return SteamInput()->GetGlyphForActionOrigin_Legacy((EInputActionOrigin)origin);
 }
 
 // Get a local path to art for on-screen glyph for a particular Xbox controller origin
 String Steam::getGlyphForXboxOrigin(int origin) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getGlyphForXboxOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getGlyphForXboxOrigin");
 	return SteamInput()->GetGlyphForXboxOrigin((EXboxOrigin)origin);
 }
 
 // Get a local path to a PNG file for the provided origin's glyph.
 String Steam::getGlyphPNGForActionOrigin(InputActionOrigin origin, InputGlyphSize size, uint32 flags) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getGlyphPNGForActionOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getGlyphPNGForActionOrigin");
 	return SteamInput()->GetGlyphPNGForActionOrigin((EInputActionOrigin)origin, (ESteamInputGlyphSize)size, flags);
 }
 
 // Get a local path to a SVG file for the provided origin's glyph.
 String Steam::getGlyphSVGForActionOrigin(InputActionOrigin origin, uint32 flags) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getGlyphSVGForActionOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getGlyphSVGForActionOrigin");
 	return SteamInput()->GetGlyphSVGForActionOrigin((EInputActionOrigin)origin, flags);
 }
 
 // Get the input type (device model) for the specified controller.
 InputType Steam::getInputTypeForHandle(uint64_t input_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, INPUT_TYPE_UNKNOWN, "[STEAM] Input not found when calling: getInputTypeForHandle");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, INPUT_TYPE_UNKNOWN, "[STEAM] Input not found when calling: getInputTypeForHandle");
 	ESteamInputType this_input_type = SteamInput()->GetInputTypeForHandle((InputHandle_t)input_handle);
 	return (InputType)this_input_type;
 }
@@ -2373,7 +2381,7 @@ InputType Steam::getInputTypeForHandle(uint64_t input_handle) {
 // Returns raw motion data for the specified controller.
 Dictionary Steam::getMotionData(uint64_t input_handle) {
 	Dictionary motion_data;
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, motion_data, "[STEAM] Input not found when calling: getMotionData");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, motion_data, "[STEAM] Input not found when calling: getMotionData");
 	ControllerMotionData_t data;
 	memset(&data, 0, sizeof(data));
 	data = SteamInput()->GetMotionData((InputHandle_t)input_handle);
@@ -2394,7 +2402,7 @@ Dictionary Steam::getMotionData(uint64_t input_handle) {
 // Get the Steam Remote Play session ID associated with a device, or 0 if there is no session associated with it. See
 // isteamremoteplay.h for more information on Steam Remote Play sessions.
 int Steam::getRemotePlaySessionID(uint64_t input_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: getRemotePlaySessionID");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: getRemotePlaySessionID");
 	return SteamInput()->GetRemotePlaySessionID((InputHandle_t)input_handle);
 }
 
@@ -2403,43 +2411,43 @@ int Steam::getRemotePlaySessionID(uint64_t input_handle) {
 // Note: user can override the settings from the Steamworks Partner site so the returned values may not exactly match your default
 // configuration.
 uint16 Steam::getSessionInputConfigurationSettings() {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: getSessionInputConfigurationSettings");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: getSessionInputConfigurationSettings");
 	return SteamInput()->GetSessionInputConfigurationSettings();
 }
 
 // Returns a localized string (from Steam's language setting) for the specified origin.
 String Steam::getStringForActionOrigin(InputActionOrigin origin) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getStringForActionOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getStringForActionOrigin");
 	return SteamInput()->GetStringForActionOrigin((EInputActionOrigin)origin);
 }
 
 // Returns a localized string (from Steam's language setting) for the user-facing action name corresponding to the specified handle.
 String Steam::getStringForAnalogActionName(uint64_t action_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getStringForAnalogActionName");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getStringForAnalogActionName");
 	return SteamInput()->GetStringForAnalogActionName((InputAnalogActionHandle_t)action_handle);
 }
 
 // Returns a localized string (from Steam's language setting) for the user-facing action name corresponding to the specified handle.
 String Steam::getStringForDigitalActionName(uint64_t action_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getStringForDigitalActionName");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getStringForDigitalActionName");
 	return SteamInput()->GetStringForDigitalActionName((InputDigitalActionHandle_t)action_handle);
 }
 
 // Returns a localized string (from Steam's language setting) for the specified Xbox controller origin.
 String Steam::getStringForXboxOrigin(int origin) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, "", "[STEAM] Input not found when calling: getStringForXboxOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, "", "[STEAM] Input not found when calling: getStringForXboxOrigin");
 	return SteamInput()->GetStringForXboxOrigin((EXboxOrigin)origin);
 }
 
 // Start SteamInputs interface.
 bool Steam::inputInit(bool explicitly_call_runframe) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, false, "[STEAM] Input not found when calling: inputInit");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, false, "[STEAM] Input not found when calling: inputInit");
 	return SteamInput()->Init(explicitly_call_runframe);
 }
 
 // Stop SteamInputs interface.
 bool Steam::inputShutdown() {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, false, "[STEAM] Input not found when calling: inputShutdown");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, false, "[STEAM] Input not found when calling: inputShutdown");
 	return SteamInput()->Shutdown();
 }
 
@@ -2447,72 +2455,58 @@ bool Steam::inputShutdown() {
 // GetAnalogActionData. The game will still need to call SteamInput()->RunFrame() or SteamAPI_RunCallbacks() before this to update
 // the data stream.
 bool Steam::newDataAvailable() {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, false, "[STEAM] Input not found when calling: newDataAvailable");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, false, "[STEAM] Input not found when calling: newDataAvailable");
 	return SteamInput()->BNewDataAvailable();
 }
 
 // Syncronize controllers.
 void Steam::runFrame(bool reserved_value) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: runFrame");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: runFrame");
 	SteamInput()->RunFrame(reserved_value);
 }
 
 // Set the trigger effect for a DualSense controller
 void Steam::setDualSenseTriggerEffect(uint64_t input_handle, int parameter_index, int trigger_mask, SCEPadTriggerEffectMode effect_mode, int position, int amplitude, int frequency) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: getActiveActionSetLayers");
-	ScePadTriggerEffectParam these_parameters;
-	memset(&these_parameters, 0, sizeof(these_parameters));
-	these_parameters.triggerMask = trigger_mask;
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: setDualSenseTriggerEffect");
 
-	if (effect_mode == 0) {
-		these_parameters.command[parameter_index].mode = SCE_PAD_TRIGGER_EFFECT_MODE_OFF;
-	}
-	else if (effect_mode == 1) {
-		these_parameters.command[parameter_index].mode = SCE_PAD_TRIGGER_EFFECT_MODE_FEEDBACK;
-	}
-	else if (effect_mode == 2) {
-		these_parameters.command[parameter_index].mode = SCE_PAD_TRIGGER_EFFECT_MODE_WEAPON;
-	}
-	else if (effect_mode == 3) {
-		these_parameters.command[parameter_index].mode = SCE_PAD_TRIGGER_EFFECT_MODE_VIBRATION;
-	}
-	else if (effect_mode == 4) {
-		these_parameters.command[parameter_index].mode = SCE_PAD_TRIGGER_EFFECT_MODE_MULTIPLE_POSITION_FEEDBACK;
-	}
-	else if (effect_mode == 5) {
-		these_parameters.command[parameter_index].mode = SCE_PAD_TRIGGER_EFFECT_MODE_SLOPE_FEEDBACK;
-	}
-	else {
-		these_parameters.command[parameter_index].mode = SCE_PAD_TRIGGER_EFFECT_MODE_MULTIPLE_POSITION_VIBRATION;
-	}
-	these_parameters.command[parameter_index].commandData.vibrationParam.position = position;
-	these_parameters.command[parameter_index].commandData.vibrationParam.amplitude = amplitude;
-	these_parameters.command[parameter_index].commandData.vibrationParam.frequency = frequency;
-	SteamInput()->SetDualSenseTriggerEffect((InputHandle_t)input_handle, &these_parameters);
+	// Ensure parameter_index refers to a valid trigger (left or right)
+	ERR_FAIL_COND_MSG(parameter_index < 0 || parameter_index >= SCE_PAD_TRIGGER_EFFECT_TRIGGER_NUM, "[STEAM] Invalid parameter index for DualSense trigger effect.");
+	// This should never happen, since we use an enum, but ya never know.
+	// Better to throw an error and return than set it to a value the caller might not desire.
+	ERR_FAIL_COND_MSG(effect_mode < 0 || effect_mode >= PAD_TRIGGER_EFFECT_MODE_MAX, "[STEAM] Invalid effect_mode for DualSense trigger effect.");
+
+	ScePadTriggerEffectParam parameters = {};
+	parameters.triggerMask = trigger_mask;
+	parameters.command[parameter_index].mode = static_cast<ScePadTriggerEffectMode>(effect_mode);
+	parameters.command[parameter_index].commandData.vibrationParam.position = position;
+	parameters.command[parameter_index].commandData.vibrationParam.amplitude = amplitude;
+	parameters.command[parameter_index].commandData.vibrationParam.frequency = frequency;
+
+	SteamInput()->SetDualSenseTriggerEffect(static_cast<InputHandle_t>(input_handle), &parameters);
 }
 
 // Set the absolute path to the Input Action Manifest file containing the in-game actions and file paths to the official
 // configurations. Used in games that bundle Steam Input configurations inside of the game depot instead of using the Steam Workshop.
 bool Steam::setInputActionManifestFilePath(const String &manifest_path) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, false, "[STEAM] Input not found when calling: setInputActionManifestFilePath");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, false, "[STEAM] Input not found when calling: setInputActionManifestFilePath");
 	return SteamInput()->SetInputActionManifestFilePath(manifest_path.utf8().get_data());
 }
 
 // Set the controller LED color on supported controllers.
 void Steam::setLEDColor(uint64_t input_handle, int color_r, int color_g, int color_b, int flags) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: setLEDColor");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: setLEDColor");
 	SteamInput()->SetLEDColor((InputHandle_t)input_handle, color_r, color_g, color_b, flags);
 }
 
 // Invokes the Steam overlay and brings up the binding screen.
 bool Steam::showBindingPanel(uint64_t input_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, false, "[STEAM] Input not found when calling: showBindingPanel");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, false, "[STEAM] Input not found when calling: showBindingPanel");
 	return SteamInput()->ShowBindingPanel((InputHandle_t)input_handle);
 }
 
 // Stops the momentum of an analog action (where applicable, ie a touchpad w/ virtual trackball settings).
 void Steam::stopAnalogActionMomentum(uint64_t input_handle, uint64_t action) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: stopAnalogActionMomentum");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: stopAnalogActionMomentum");
 	SteamInput()->StopAnalogActionMomentum((InputHandle_t)input_handle, (InputAnalogActionHandle_t)action);
 }
 
@@ -2520,25 +2514,25 @@ void Steam::stopAnalogActionMomentum(uint64_t input_handle, uint64_t action) {
 // your game if eDestinationInputType is INPUT_TYPE_UNKNOWN. This action origin can be used in your glyph look up table
 // or passed into GetGlyphForActionOrigin or GetStringForActionOrigin.
 int Steam::translateActionOrigin(InputType destination_input, InputActionOrigin source_origin) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, 0, "[STEAM] Input not found when calling: translateActionOrigin");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, 0, "[STEAM] Input not found when calling: translateActionOrigin");
 	return SteamInput()->TranslateActionOrigin((ESteamInputType)destination_input, (EInputActionOrigin)source_origin);
 }
 
 // Triggers a (low-level) haptic pulse on supported controllers.
 void Steam::triggerHapticPulse(uint64_t input_handle, int target_pad, int duration) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: triggerHapticPulse");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: triggerHapticPulse");
 	SteamInput()->Legacy_TriggerHapticPulse((InputHandle_t)input_handle, (ESteamControllerPad)target_pad, duration);
 }
 
 // Triggers a repeated haptic pulse on supported controllers.
 void Steam::triggerRepeatedHapticPulse(uint64_t input_handle, int target_pad, int duration, int offset, int repeat, int flags) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: triggerRepeatedHapticPulse");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: triggerRepeatedHapticPulse");
 	SteamInput()->Legacy_TriggerRepeatedHapticPulse((InputHandle_t)input_handle, (ESteamControllerPad)target_pad, duration, offset, repeat, flags);
 }
 
 // Send a haptic pulse, works on Steam Deck and Steam Controller devices.
 void Steam::triggerSimpleHapticEvent(uint64_t input_handle, int haptic_location, uint8 intensity, const String &gain_db, uint8 other_intensity, const String &other_gain_db) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: triggerSimpleHapticEvent");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: triggerSimpleHapticEvent");
 	char gain = gain_db[0];
 	char other_gain = other_gain_db[0];
 	SteamInput()->TriggerSimpleHapticEvent((InputHandle_t)input_handle, (EControllerHapticLocation)haptic_location, intensity, gain, other_intensity, other_gain);
@@ -2546,21 +2540,21 @@ void Steam::triggerSimpleHapticEvent(uint64_t input_handle, int haptic_location,
 
 // Trigger a vibration event on supported controllers.
 void Steam::triggerVibration(uint64_t input_handle, uint16_t left_speed, uint16_t right_speed) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: triggerVibration");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: triggerVibration");
 	SteamInput()->TriggerVibration((InputHandle_t)input_handle, (unsigned short)left_speed, (unsigned short)right_speed);
 }
 
 // Trigger a vibration event on supported controllers including Xbox trigger impulse rumble - Steam will translate these commands
 // into haptic pulses for Steam Controllers.
 void Steam::triggerVibrationExtended(uint64_t input_handle, uint16_t left_speed, uint16_t right_speed, uint16_t left_trigger_speed, uint16_t right_trigger_speed) {
-	ERR_FAIL_COND_MSG(SteamInput() == NULL, "[STEAM] Input not found when calling: triggerVibrationExtended");
+	ERR_FAIL_COND_MSG(SteamInput() == nullptr, "[STEAM] Input not found when calling: triggerVibrationExtended");
 	SteamInput()->TriggerVibrationExtended((InputHandle_t)input_handle, (unsigned short)left_speed, (unsigned short)right_speed, (unsigned short)left_trigger_speed, (unsigned short)right_trigger_speed);
 }
 
 // Waits on an IPC event from Steam sent when there is new data to be fetched from the data drop. Returns true when data was
 // recievied before the timeout expires. Useful for games with a dedicated input thread.
 bool Steam::waitForData(bool wait_forever, uint32 timeout) {
-	ERR_FAIL_COND_V_MSG(SteamInput() == NULL, false, "[STEAM] Input not found when calling: waitForData");
+	ERR_FAIL_COND_V_MSG(SteamInput() == nullptr, false, "[STEAM] Input not found when calling: waitForData");
 	return SteamInput()->BWaitForData(wait_forever, timeout);
 }
 
@@ -2574,7 +2568,7 @@ bool Steam::waitForData(bool wait_forever, uint32 timeout) {
 // Grant a specific one-time promotional item to the current user.
 int32 Steam::addPromoItem(uint32 item) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: addPromoItem");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: addPromoItem");
 	if (SteamInventory()->AddPromoItem(&new_inventory_handle, item)) {
 		inventory_handle = new_inventory_handle;
 	}
@@ -2584,14 +2578,14 @@ int32 Steam::addPromoItem(uint32 item) {
 // Grant a specific one-time promotional items to the current user.
 int32 Steam::addPromoItems(PackedInt64Array items) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: addPromoItems");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: addPromoItems");
 	int count = items.size();
 	SteamItemDef_t *new_items = new SteamItemDef_t[items.size()];
 
 	for (int i = 0; i < count; i++) {
 		new_items[i] = items[i];
 	}
-		
+
 	if (SteamInventory()->AddPromoItems(&new_inventory_handle, new_items, count)) {
 		inventory_handle = new_inventory_handle;
 	}
@@ -2601,7 +2595,7 @@ int32 Steam::addPromoItems(PackedInt64Array items) {
 
 // Checks whether an inventory result handle belongs to the specified Steam ID.
 bool Steam::checkResultSteamID(uint64_t steam_id_expected, int32 this_inventory_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, false, "[STEAM] Inventory class not found when calling: checkResultSteamID");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, false, "[STEAM] Inventory class not found when calling: checkResultSteamID");
 	CSteamID steam_id = (uint64)steam_id_expected;
 
 	if (this_inventory_handle == 0) {
@@ -2613,7 +2607,7 @@ bool Steam::checkResultSteamID(uint64_t steam_id_expected, int32 this_inventory_
 // Consumes items from a user's inventory. If the quantity of the given item goes to zero, it is permanently removed.
 int32 Steam::consumeItem(uint64_t item_consume, uint32 quantity) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: consumeItem");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: consumeItem");
 	if (SteamInventory()->ConsumeItem(&new_inventory_handle, (SteamItemInstanceID_t)item_consume, quantity)) {
 		inventory_handle = new_inventory_handle;
 	}
@@ -2623,7 +2617,7 @@ int32 Steam::consumeItem(uint64_t item_consume, uint32 quantity) {
 // Deserializes a result set and verifies the signature bytes.
 int32 Steam::deserializeResult(PackedByteArray buffer) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, 0, "[STEAM] Inventory class not found when calling: deserializeResult");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, 0, "[STEAM] Inventory class not found when calling: deserializeResult");
 	if (SteamInventory()->DeserializeResult(&new_inventory_handle, buffer.ptr(), buffer.size(), false)) {
 		inventory_handle = new_inventory_handle;
 	}
@@ -2632,7 +2626,7 @@ int32 Steam::deserializeResult(PackedByteArray buffer) {
 
 // Destroys a result handle and frees all associated memory.
 void Steam::destroyResult(int this_inventory_handle) {
-	ERR_FAIL_COND_MSG(SteamInventory() == NULL, "[STEAM] Inventory class not found when calling: destroyResult");
+	ERR_FAIL_COND_MSG(SteamInventory() == nullptr, "[STEAM] Inventory class not found when calling: destroyResult");
 	if (this_inventory_handle == 0) {
 		this_inventory_handle = inventory_handle;
 	}
@@ -2642,7 +2636,7 @@ void Steam::destroyResult(int this_inventory_handle) {
 // Grant one item in exchange for a set of other items.
 int32 Steam::exchangeItems(const PackedInt64Array output_items, const PackedInt32Array output_quantity, const PackedInt64Array input_items, const PackedInt32Array input_quantity) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: exchangeItems");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: exchangeItems");
 	uint32 total_output = output_items.size();
 	SteamItemDef_t *generated_items = new SteamItemDef_t[total_output];
 	for (uint32 i = 0; i < total_output; i++) {
@@ -2651,7 +2645,7 @@ int32 Steam::exchangeItems(const PackedInt64Array output_items, const PackedInt3
 
 	uint32_t *quantity_out = (uint32*) output_quantity.ptr();
 	uint32_t *quantity_in = (uint32*) input_quantity.ptr();
-	
+
 	uint32 array_size = input_items.size();
 	SteamItemInstanceID_t *input_item_ids = new SteamItemInstanceID_t[array_size];
 	for (uint32 i = 0; i < array_size; i++) {
@@ -2671,7 +2665,7 @@ int32 Steam::exchangeItems(const PackedInt64Array output_items, const PackedInt3
 // Grants specific items to the current user, for developers only.
 int32 Steam::generateItems(const PackedInt64Array items, const PackedInt32Array quantity) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: generateItems");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: generateItems");
 	uint32 total_quantity = items.size();
 	SteamItemDef_t *generated_items = new SteamItemDef_t[total_quantity];
 
@@ -2690,7 +2684,7 @@ int32 Steam::generateItems(const PackedInt64Array items, const PackedInt32Array 
 // Start retrieving all items in the current users inventory.
 int32 Steam::getAllItems() {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: getAllItems");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: getAllItems");
 	if (SteamInventory()->GetAllItems(&new_inventory_handle)) {
 		inventory_handle = new_inventory_handle;
 	}
@@ -2702,9 +2696,9 @@ Dictionary Steam::getItemDefinitionProperty(uint32 definition, const String& nam
 	Dictionary item_definition;
 	item_definition["property"] = "";
 	item_definition["success"] = false;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, item_definition, "[STEAM] Inventory class not found when calling: getItemDefinitionProperty");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, item_definition, "[STEAM] Inventory class not found when calling: getItemDefinitionProperty");
 	char buffer[STEAM_BUFFER_SIZE];
-	uint32 buffer_size = std::size(buffer);
+	uint32 buffer_size = STEAM_BUFFER_SIZE;
 	bool steam_success = SteamInventory()->GetItemDefinitionProperty(definition, name.utf8().get_data(), buffer, &buffer_size);
 	String property = String::utf8(buffer, buffer_size);
 	item_definition["property"] = property;
@@ -2715,7 +2709,7 @@ Dictionary Steam::getItemDefinitionProperty(uint32 definition, const String& nam
 // After a successful call to RequestPrices, you can call this method to get the pricing for a specific item definition.
 Dictionary Steam::getItemPrice(uint32 definition) {
 	Dictionary prices;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, prices, "[STEAM] Inventory class not found when calling: getItemPrice");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, prices, "[STEAM] Inventory class not found when calling: getItemPrice");
 	uint64 price = 0;
 	uint64 base_price = 0;
 	SteamInventory()->GetItemPrice(definition, &price, &base_price);
@@ -2727,7 +2721,7 @@ Dictionary Steam::getItemPrice(uint32 definition) {
 // Gets the state of a subset of the current user's inventory.
 int32 Steam::getItemsByID(const PackedInt64Array id_array) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: getItemsByID");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: getItemsByID");
 	uint32 array_size = id_array.size();
 	SteamItemInstanceID_t *item_ids = new SteamItemInstanceID_t[array_size];
 
@@ -2746,7 +2740,7 @@ int32 Steam::getItemsByID(const PackedInt64Array id_array) {
 // After a successful call to RequestPrices, you can call this method to get all the pricing for applicable item definitions. Use
 // the result of GetNumItemsWithPrices as the the size of the arrays that you pass in.
 Array Steam::getItemsWithPrices() {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, Array(), "[STEAM] Inventory class not found when calling: getItemsWithPrices");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, Array(), "[STEAM] Inventory class not found when calling: getItemsWithPrices");
 	uint32 valid_prices = SteamInventory()->GetNumItemsWithPrices();
 	Array price_array;
 	SteamItemDef_t *ids = new SteamItemDef_t[valid_prices];
@@ -2770,9 +2764,9 @@ Array Steam::getItemsWithPrices() {
 
 // Gets the dynamic properties from an item in an inventory result set.
 String Steam::getResultItemProperty(uint32 index, const String &name, int32 this_inventory_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, "", "[STEAM] Inventory class not found when calling: getResultItemProperty");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, "", "[STEAM] Inventory class not found when calling: getResultItemProperty");
 	char value[256];
-	uint32 buffer_size = std::size(value);
+	uint32 buffer_size = sizeof(value);
 
 	if (this_inventory_handle == 0) {
 		this_inventory_handle = inventory_handle;
@@ -2789,7 +2783,7 @@ String Steam::getResultItemProperty(uint32 index, const String &name, int32 this
 
 // Get the items associated with an inventory result handle.
 Array Steam::getResultItems(int32 this_inventory_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, Array(), "[STEAM] Inventory class not found when calling: getResultItems");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, Array(), "[STEAM] Inventory class not found when calling: getResultItems");
 	Array items;
 	uint32 size = 0;
 
@@ -2815,7 +2809,7 @@ Array Steam::getResultItems(int32 this_inventory_handle) {
 
 // Find out the status of an asynchronous inventory result handle.
 Result Steam::getResultStatus(int32 this_inventory_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, RESULT_FAIL, "[STEAM] Inventory class not found when calling: getResultStatus");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, RESULT_FAIL, "[STEAM] Inventory class not found when calling: getResultStatus");
 	if (this_inventory_handle == 0) {
 		this_inventory_handle = inventory_handle;
 	}
@@ -2824,7 +2818,7 @@ Result Steam::getResultStatus(int32 this_inventory_handle) {
 
 // Gets the server time at which the result was generated.
 uint32 Steam::getResultTimestamp(int32 this_inventory_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, 0, "[STEAM] Inventory class not found when calling: getResultTimestamp");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, 0, "[STEAM] Inventory class not found when calling: getResultTimestamp");
 	if (this_inventory_handle == 0) {
 		this_inventory_handle = inventory_handle;
 	}
@@ -2834,7 +2828,7 @@ uint32 Steam::getResultTimestamp(int32 this_inventory_handle) {
 // Grant all potential one-time promotional items to the current user.
 int32 Steam::grantPromoItems() {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: grantPromoItems");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: grantPromoItems");
 	if (SteamInventory()->GrantPromoItems(&new_inventory_handle)) {
 		inventory_handle = new_inventory_handle;
 	}
@@ -2843,13 +2837,13 @@ int32 Steam::grantPromoItems() {
 
 // Triggers an asynchronous load and refresh of item definitions.
 bool Steam::loadItemDefinitions() {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, false, "[STEAM] Inventory class not found when calling: loadItemDefinitions");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, false, "[STEAM] Inventory class not found when calling: loadItemDefinitions");
 	return SteamInventory()->LoadItemDefinitions();
 }
 
 // Removes a dynamic property for the given item.
 bool Steam::removeProperty(uint64_t item_id, const String &name, uint64_t this_inventory_update_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, false, "[STEAM] Inventory class not found when calling: removeProperty");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, false, "[STEAM] Inventory class not found when calling: removeProperty");
 	// If no inventory update handle is passed, use internal one
 	if (this_inventory_update_handle == 0) {
 		this_inventory_update_handle = inventory_update_handle;
@@ -2859,7 +2853,7 @@ bool Steam::removeProperty(uint64_t item_id, const String &name, uint64_t this_i
 
 // Request the list of "eligible" promo items that can be manually granted to the given user.
 void Steam::requestEligiblePromoItemDefinitionsIDs(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamInventory() == NULL, "[STEAM] Inventory class not found when calling: requestEligiblePromoItemDefinitionsIDs");
+	ERR_FAIL_COND_MSG(SteamInventory() == nullptr, "[STEAM] Inventory class not found when calling: requestEligiblePromoItemDefinitionsIDs");
 	CSteamID user_id = (uint64)steam_id;
 	SteamAPICall_t api_call = SteamInventory()->RequestEligiblePromoItemDefinitionsIDs(user_id);
 	callResultEligiblePromoItemDefIDs.Set(api_call, this, &Steam::inventory_eligible_promo_item);
@@ -2870,7 +2864,7 @@ void Steam::requestEligiblePromoItemDefinitionsIDs(uint64_t steam_id) {
 // GetNumItemsWithPrices and GetItemsWithPrices to get prices for all the known item definitions, or GetItemPrice for a specific
 // item definition.
 void Steam::requestPrices() {
-	ERR_FAIL_COND_MSG(SteamInventory() == NULL, "[STEAM] Inventory class not found when calling: requestPrices");
+	ERR_FAIL_COND_MSG(SteamInventory() == nullptr, "[STEAM] Inventory class not found when calling: requestPrices");
 	SteamAPICall_t api_call = SteamInventory()->RequestPrices();
 	callResultRequestPrices.Set(api_call, this, &Steam::inventory_request_prices_result);
 }
@@ -2878,7 +2872,7 @@ void Steam::requestPrices() {
 // Serialized result sets contain a short signature which can't be forged or replayed across different game sessions.
 PackedByteArray Steam::serializeResult(int32 this_inventory_handle) {
 	PackedByteArray result_serialized;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, result_serialized, "[STEAM] Inventory class not found when calling: serializeResult");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, result_serialized, "[STEAM] Inventory class not found when calling: serializeResult");
 	if (this_inventory_handle == 0) {
 		this_inventory_handle = inventory_handle;
 	}
@@ -2895,7 +2889,7 @@ PackedByteArray Steam::serializeResult(int32 this_inventory_handle) {
 
 // Sets a dynamic property for the given item. Supported value types are boolean.
 bool Steam::setPropertyBool(uint64_t item_id, const String &name, bool value, uint64_t this_inventory_update_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, false, "[STEAM] Inventory class not found when calling: setPropertyBool");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, false, "[STEAM] Inventory class not found when calling: setPropertyBool");
 	if (this_inventory_update_handle == 0) {
 		this_inventory_update_handle = inventory_update_handle;
 	}
@@ -2904,7 +2898,7 @@ bool Steam::setPropertyBool(uint64_t item_id, const String &name, bool value, ui
 
 // Sets a dynamic property for the given item. Supported value types are 32 bit floats.
 bool Steam::setPropertyFloat(uint64_t item_id, const String &name, float value, uint64_t this_inventory_update_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, false, "[STEAM] Inventory class not found when calling: setPropertyFloat");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, false, "[STEAM] Inventory class not found when calling: setPropertyFloat");
 	if (this_inventory_update_handle == 0) {
 		this_inventory_update_handle = inventory_update_handle;
 	}
@@ -2913,7 +2907,7 @@ bool Steam::setPropertyFloat(uint64_t item_id, const String &name, float value, 
 
 // Sets a dynamic property for the given item. Supported value types are 64 bit integers.
 bool Steam::setPropertyInt(uint64_t item_id, const String &name, uint64_t value, uint64_t this_inventory_update_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, false, "[STEAM] Inventory class not found when calling: setPropertyInt");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, false, "[STEAM] Inventory class not found when calling: setPropertyInt");
 	if (this_inventory_update_handle == 0) {
 		this_inventory_update_handle = inventory_update_handle;
 	}
@@ -2922,7 +2916,7 @@ bool Steam::setPropertyInt(uint64_t item_id, const String &name, uint64_t value,
 
 // Sets a dynamic property for the given item. Supported value types are strings.
 bool Steam::setPropertyString(uint64_t item_id, const String &name, const String &value, uint64_t this_inventory_update_handle) {
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, false, "[STEAM] Inventory class not found when calling: setPropertyString");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, false, "[STEAM] Inventory class not found when calling: setPropertyString");
 	if (this_inventory_update_handle == 0) {
 		this_inventory_update_handle = inventory_update_handle;
 	}
@@ -2933,7 +2927,7 @@ bool Steam::setPropertyString(uint64_t item_id, const String &name, const String
 // will be prompted in the Steam Overlay to complete the purchase in their local currency, funding their Steam Wallet if necessary,
 // etc.
 void Steam::startPurchase(const PackedInt64Array items, const PackedInt32Array quantity) {
-	ERR_FAIL_COND_MSG(SteamInventory() == NULL, "[STEAM] Inventory class not found when calling: startPurchase");
+	ERR_FAIL_COND_MSG(SteamInventory() == nullptr, "[STEAM] Inventory class not found when calling: startPurchase");
 	uint32 total_items = items.size();
 	SteamItemDef_t *purchases = new SteamItemDef_t[total_items];
 	for (uint32 i = 0; i < total_items; i++) {
@@ -2951,14 +2945,14 @@ void Steam::startPurchase(const PackedInt64Array items, const PackedInt32Array q
 // SetProperty or RemoveProperty for all the items that you want to modify, you will need to call SubmitUpdateProperties to send
 // the request to the Steam servers. A SteamInventoryResultReady_t callback will be fired with the results of the operation.
 void Steam::startUpdateProperties() {
-	ERR_FAIL_COND_MSG(SteamInventory() == NULL, "[STEAM] Inventory class not found when calling: startUpdateProperties");
+	ERR_FAIL_COND_MSG(SteamInventory() == nullptr, "[STEAM] Inventory class not found when calling: startUpdateProperties");
 	inventory_update_handle = SteamInventory()->StartUpdateProperties();
 }
 
 // Submits the transaction request to modify dynamic properties on items for the current user. See StartUpdateProperties.
 int32 Steam::submitUpdateProperties(uint64_t this_inventory_update_handle) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: submitUpdateProperties");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: submitUpdateProperties");
 	if (this_inventory_update_handle == 0) {
 		this_inventory_update_handle = inventory_update_handle;
 	}
@@ -2972,7 +2966,7 @@ int32 Steam::submitUpdateProperties(uint64_t this_inventory_update_handle) {
 // Transfer items between stacks within a user's inventory.
 int32 Steam::transferItemQuantity(uint64_t item_id, uint32 quantity, uint64_t item_destination, bool split) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: transferItemQuantity");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: transferItemQuantity");
 	if (split) {
 		if (SteamInventory()->TransferItemQuantity(&new_inventory_handle, (SteamItemInstanceID_t)item_id, quantity, k_SteamItemInstanceIDInvalid)) {
 			inventory_handle = new_inventory_handle;
@@ -2989,7 +2983,7 @@ int32 Steam::transferItemQuantity(uint64_t item_id, uint32 quantity, uint64_t it
 // Trigger an item drop if the user has played a long enough period of time.
 int32 Steam::triggerItemDrop(uint32 definition) {
 	int32 new_inventory_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamInventory() == NULL, new_inventory_handle, "[STEAM] Inventory class not found when calling: triggerItemDrop");
+	ERR_FAIL_COND_V_MSG(SteamInventory() == nullptr, new_inventory_handle, "[STEAM] Inventory class not found when calling: triggerItemDrop");
 	if (SteamInventory()->TriggerItemDrop(&new_inventory_handle, (SteamItemDef_t)definition)) {
 		inventory_handle = new_inventory_handle;
 	}
@@ -3001,56 +2995,56 @@ int32 Steam::triggerItemDrop(uint32 definition) {
 
 // Adds the game server to the local list; updates the time played of the server if it already exists in the list.
 int Steam::addFavoriteGame(String ip, uint16 port, uint16 query_port, uint32 flags, uint32 last_played) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, 0, "[STEAM] Matchmaking class not found when calling: addFavoriteGame");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, 0, "[STEAM] Matchmaking class not found when calling: addFavoriteGame");
 	return SteamMatchmaking()->AddFavoriteGame((AppId_t)current_app_id, getIPFromString(ip), port, query_port, flags, last_played);
 }
 
 // Sets the distance for which we should search for lobbies (based on users IP address to location map on the Steam backed).
 void Steam::addRequestLobbyListDistanceFilter(LobbyDistanceFilter distance_filter) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListDistanceFilter");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListDistanceFilter");
 	SteamMatchmaking()->AddRequestLobbyListDistanceFilter((ELobbyDistanceFilter)distance_filter);
 }
 
 // Returns only lobbies with the specified number of slots available.
 void Steam::addRequestLobbyListFilterSlotsAvailable(int slots_available) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListFilterSlotsAvailable");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListFilterSlotsAvailable");
 	SteamMatchmaking()->AddRequestLobbyListFilterSlotsAvailable(slots_available);
 }
 
 // Returns results closest to the specified value. Multiple near filters can be added, with early filters taking precedence.
 void Steam::addRequestLobbyListNearValueFilter(const String &key_to_match, int value_to_be_close_to) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListNearValueFilter");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListNearValueFilter");
 	SteamMatchmaking()->AddRequestLobbyListNearValueFilter(key_to_match.utf8().get_data(), value_to_be_close_to);
 }
 
 // Adds a numerical comparison filter to the next RequestLobbyList call.
 void Steam::addRequestLobbyListNumericalFilter(const String &key_to_match, int value_to_match, LobbyComparison comparison_type) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListNumericalFilter");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListNumericalFilter");
 	SteamMatchmaking()->AddRequestLobbyListNumericalFilter(key_to_match.utf8().get_data(), value_to_match, (ELobbyComparison)comparison_type);
 }
 
 // Sets how many results to return, the lower the count the faster it is to download the lobby results & details to the client.
 void Steam::addRequestLobbyListResultCountFilter(int max_results) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListResultCountFilter");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListResultCountFilter");
 	SteamMatchmaking()->AddRequestLobbyListResultCountFilter(max_results);
 }
 
 // Adds a string comparison filter to the next RequestLobbyList call.
 void Steam::addRequestLobbyListStringFilter(const String &key_to_match, const String &value_to_match, LobbyComparison comparison_type) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListStringFilter");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: addRequestLobbyListStringFilter");
 	SteamMatchmaking()->AddRequestLobbyListStringFilter(key_to_match.utf8().get_data(), value_to_match.utf8().get_data(), (ELobbyComparison)comparison_type);
 }
 
 // Create a lobby on the Steam servers, if private the lobby will not be returned by any RequestLobbyList() call.
 void Steam::createLobby(LobbyType lobby_type, int max_members) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: createLobby");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: createLobby");
 	SteamAPICall_t api_call = SteamMatchmaking()->CreateLobby((ELobbyType)lobby_type, max_members);
 	callResultCreateLobby.Set(api_call, this, &Steam::lobby_created);
 }
 
 // Removes a metadata key from the lobby.
 bool Steam::deleteLobbyData(uint64_t steam_lobby_id, const String &key) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: deleteLobbyData");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: deleteLobbyData");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->DeleteLobbyData(lobby_id, key.utf8().get_data());
 }
@@ -3058,7 +3052,7 @@ bool Steam::deleteLobbyData(uint64_t steam_lobby_id, const String &key) {
 // Get lobby data by the lobby's ID
 Dictionary Steam::getAllLobbyData(uint64_t steam_lobby_id) {
 	Dictionary all_data;
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, all_data, "[STEAM] Matchmaking class not found when calling: getAllLobbyData");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, all_data, "[STEAM] Matchmaking class not found when calling: getAllLobbyData");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	int data_count = SteamMatchmaking()->GetLobbyDataCount(lobby_id);
 	char key[MAX_LOBBY_KEY_LENGTH];
@@ -3079,7 +3073,7 @@ Dictionary Steam::getAllLobbyData(uint64_t steam_lobby_id) {
 // Gets an array of the details of the favorite game servers.
 Array Steam::getFavoriteGames() {
 	Array favorites;
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, favorites, "[STEAM] Matchmaking class not found when calling: getFavoriteGames");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, favorites, "[STEAM] Matchmaking class not found when calling: getFavoriteGames");
 	int count = SteamMatchmaking()->GetFavoriteGameCount();
 	for (int i = 0; i < count; i++) {
 		Dictionary favorite;
@@ -3105,7 +3099,7 @@ Array Steam::getFavoriteGames() {
 
 // Get data associated with this lobby.
 String Steam::getLobbyData(uint64_t steam_lobby_id, const String &key) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, "", "[STEAM] Matchmaking class not found when calling: getLobbyData");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, "", "[STEAM] Matchmaking class not found when calling: getLobbyData");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return String::utf8(SteamMatchmaking()->GetLobbyData(lobby_id, key.utf8().get_data()));
 }
@@ -3113,7 +3107,7 @@ String Steam::getLobbyData(uint64_t steam_lobby_id, const String &key) {
 // Returns the details of a game server set in a lobby - returns false if there is no game server set, or that lobby doesn't exist.
 Dictionary Steam::getLobbyGameServer(uint64_t steam_lobby_id) {
 	Dictionary game_server;
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, game_server, "[STEAM] Matchmaking class not found when calling: getLobbyGameServer");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, game_server, "[STEAM] Matchmaking class not found when calling: getLobbyGameServer");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	uint32 server_ip = 0;
 	uint16 server_port = 0;
@@ -3131,7 +3125,7 @@ Dictionary Steam::getLobbyGameServer(uint64_t steam_lobby_id) {
 
 // Returns the CSteamID of a user in the lobby.
 uint64_t Steam::getLobbyMemberByIndex(uint64_t steam_lobby_id, int member) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, 0, "[STEAM] Matchmaking class not found when calling: getLobbyMemberByIndex");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, 0, "[STEAM] Matchmaking class not found when calling: getLobbyMemberByIndex");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	CSteamID lobbyMember = SteamMatchmaking()->GetLobbyMemberByIndex(lobby_id, member);
 	return lobbyMember.ConvertToUint64();
@@ -3139,7 +3133,7 @@ uint64_t Steam::getLobbyMemberByIndex(uint64_t steam_lobby_id, int member) {
 
 // Gets per-user metadata for someone in this lobby.
 String Steam::getLobbyMemberData(uint64_t steam_lobby_id, uint64_t steam_id_user, const String &key) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, "", "[STEAM] Matchmaking class not found when calling: getLobbyMemberData");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, "", "[STEAM] Matchmaking class not found when calling: getLobbyMemberData");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	CSteamID user_id = (uint64)steam_id_user;
 	return SteamMatchmaking()->GetLobbyMemberData(lobby_id, user_id, key.utf8().get_data());
@@ -3147,14 +3141,14 @@ String Steam::getLobbyMemberData(uint64_t steam_lobby_id, uint64_t steam_id_user
 
 // Returns the current limit on the # of users who can join the lobby; returns 0 if no limit is defined.
 int Steam::getLobbyMemberLimit(uint64_t steam_lobby_id) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, 0, "[STEAM] Matchmaking class not found when calling: getLobbyMemberLimit");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, 0, "[STEAM] Matchmaking class not found when calling: getLobbyMemberLimit");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->GetLobbyMemberLimit(lobby_id);
 }
 
 // Returns the current lobby owner.
 uint64_t Steam::getLobbyOwner(uint64_t steam_lobby_id) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, 0, "[STEAM] Matchmaking class not found when calling: getLobbyOwner");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, 0, "[STEAM] Matchmaking class not found when calling: getLobbyOwner");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	CSteamID owner_id = SteamMatchmaking()->GetLobbyOwner(lobby_id);
 	return owner_id.ConvertToUint64();
@@ -3162,7 +3156,7 @@ uint64_t Steam::getLobbyOwner(uint64_t steam_lobby_id) {
 
 // Lobby iteration, for viewing details of users in a lobby.
 int Steam::getNumLobbyMembers(uint64_t steam_lobby_id) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, 0, "[STEAM] Matchmaking class not found when calling: getNumLobbyMembers");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, 0, "[STEAM] Matchmaking class not found when calling: getNumLobbyMembers");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->GetNumLobbyMembers(lobby_id);
 }
@@ -3170,7 +3164,7 @@ int Steam::getNumLobbyMembers(uint64_t steam_lobby_id) {
 // Invite another user to the lobby, the target user will receive a LobbyInvite_t callback, will return true if the invite is
 // successfully sent, whether or not the target responds.
 bool Steam::inviteUserToLobby(uint64_t steam_lobby_id, uint64_t steam_id_invitee) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: inviteUserToLobby");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: inviteUserToLobby");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	CSteamID invitee_id = (uint64)steam_id_invitee;
 	return SteamMatchmaking()->InviteUserToLobby(lobby_id, invitee_id);
@@ -3178,55 +3172,55 @@ bool Steam::inviteUserToLobby(uint64_t steam_lobby_id, uint64_t steam_id_invitee
 
 // Join an existing lobby.
 void Steam::joinLobby(uint64_t steam_lobby_id) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: joinLobby");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: joinLobby");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	SteamMatchmaking()->JoinLobby(lobby_id);
 }
 
 // Leave a lobby, this will take effect immediately on the client side, other users will be notified by LobbyChatUpdate_t callback.
 void Steam::leaveLobby(uint64_t steam_lobby_id) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: leaveLobby");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: leaveLobby");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	SteamMatchmaking()->LeaveLobby(lobby_id);
 }
 
 // Removes the game server from the local storage; returns true if one was removed.
 bool Steam::removeFavoriteGame(uint32 app_id, String ip, uint16 port, uint16 query_port, uint32 flags) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: removeFavoriteGame");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: removeFavoriteGame");
 	return SteamMatchmaking()->RemoveFavoriteGame((AppId_t)app_id, getIPFromString(ip), port, query_port, flags);
 }
 
 // Refreshes metadata for a lobby you're not necessarily in right now.
 bool Steam::requestLobbyData(uint64_t steam_lobby_id) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: requestLobbyData");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: requestLobbyData");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->RequestLobbyData(lobby_id);
 }
 
 // Get a list of relevant lobbies.
 void Steam::requestLobbyList() {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: requestLobbyList");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: requestLobbyList");
 	SteamAPICall_t api_call = SteamMatchmaking()->RequestLobbyList();
 	callResultLobbyList.Set(api_call, this, &Steam::lobby_match_list);
 }
 
 // Broadcasts a chat message to the all the users in the lobby.
 bool Steam::sendLobbyChatMsg(uint64_t steam_lobby_id, const String &message_body) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: sendLobbyChatMsg");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: sendLobbyChatMsg");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->SendLobbyChatMsg(lobby_id, message_body.utf8().get_data(), strlen(message_body.utf8().get_data()) + 1);
 }
 
 // Sets a key/value pair in the lobby metadata.
 bool Steam::setLobbyData(uint64_t steam_lobby_id, const String &key, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: setLobbyData");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: setLobbyData");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->SetLobbyData(lobby_id, key.utf8().get_data(), value.utf8().get_data());
 }
 
 // Sets the game server associated with the lobby.
 void Steam::setLobbyGameServer(uint64_t steam_lobby_id, const String &server_ip, uint16 server_port, uint64_t steam_id_game_server) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: setLobbyGameServer");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: setLobbyGameServer");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	if (steam_id_game_server == 0) {
 		SteamMatchmaking()->SetLobbyGameServer(lobby_id, getIPFromString(server_ip), server_port, k_steamIDNil);
@@ -3239,28 +3233,28 @@ void Steam::setLobbyGameServer(uint64_t steam_lobby_id, const String &server_ip,
 
 // Sets whether or not a lobby is joinable - defaults to true for a new lobby.
 bool Steam::setLobbyJoinable(uint64_t steam_lobby_id, bool joinable) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: setLobbyJoinable");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: setLobbyJoinable");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->SetLobbyJoinable(lobby_id, joinable);
 }
 
 // Sets per-user metadata (for the local user implicitly).
 void Steam::setLobbyMemberData(uint64_t steam_lobby_id, const String &key, const String &value) {
-	ERR_FAIL_COND_MSG(SteamMatchmaking() == NULL, "[STEAM] Matchmaking class not found when calling: setLobbyMemberData");
+	ERR_FAIL_COND_MSG(SteamMatchmaking() == nullptr, "[STEAM] Matchmaking class not found when calling: setLobbyMemberData");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	SteamMatchmaking()->SetLobbyMemberData(lobby_id, key.utf8().get_data(), value.utf8().get_data());
 }
 
 // Set the limit on the # of users who can join the lobby.
 bool Steam::setLobbyMemberLimit(uint64_t steam_lobby_id, int max_members) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: setLobbyMemberLimit");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: setLobbyMemberLimit");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->SetLobbyMemberLimit(lobby_id, max_members);
 }
 
 // Changes who the lobby owner is.
 bool Steam::setLobbyOwner(uint64_t steam_lobby_id, uint64_t steam_id_new_owner) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: setLobbyOwner");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: setLobbyOwner");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	CSteamID owner_id = (uint64)steam_id_new_owner;
 	return SteamMatchmaking()->SetLobbyOwner(lobby_id, owner_id);
@@ -3268,7 +3262,7 @@ bool Steam::setLobbyOwner(uint64_t steam_lobby_id, uint64_t steam_id_new_owner) 
 
 // Updates which type of lobby it is.
 bool Steam::setLobbyType(uint64_t steam_lobby_id, LobbyType lobby_type) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == NULL, false, "[STEAM] Matchmaking class not found when calling: setLobbyType");
+	ERR_FAIL_COND_V_MSG(SteamMatchmaking() == nullptr, false, "[STEAM] Matchmaking class not found when calling: setLobbyType");
 	CSteamID lobby_id = (uint64)steam_lobby_id;
 	return SteamMatchmaking()->SetLobbyType(lobby_id, (ELobbyType)lobby_type);
 }
@@ -3278,7 +3272,7 @@ bool Steam::setLobbyType(uint64_t steam_lobby_id, LobbyType lobby_type) {
 
 // Cancel an outstanding server list request.
 void Steam::cancelQuery(uint64_t this_server_list_request) {
-	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == NULL, "[STEAM] Matchmaking Servers class not found when calling: cancelQuery");
+	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == nullptr, "[STEAM] Matchmaking Servers class not found when calling: cancelQuery");
 	if (this_server_list_request == 0) {
 		this_server_list_request = (uint64)server_list_request;
 	}
@@ -3287,26 +3281,39 @@ void Steam::cancelQuery(uint64_t this_server_list_request) {
 
 // Cancel an outstanding individual server query.
 void Steam::cancelServerQuery(int server_query) {
-	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == NULL, "[STEAM] Matchmaking Servers class not found when calling: cancelServerQuery");
+	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == nullptr, "[STEAM] Matchmaking Servers class not found when calling: cancelServerQuery");
 	SteamMatchmakingServers()->CancelServerQuery((HServerQuery)server_query);
 }
 
 // Convert an array of filters to a contiguous vector.
-static std::vector<MatchMakingKeyValuePair_t> filters_array_to_vector(const Array &filters) {
-	uint32 filter_size = filters.size();
-	std::vector<MatchMakingKeyValuePair_t> filters_array(filter_size);
-	for (uint32 i = 0; i < filter_size; i++) {
-		Array pair = filters[i];
+static Vector<MatchMakingKeyValuePair_t> filters_array_to_vector(const Array &filters) {
+	Vector<MatchMakingKeyValuePair_t> filters_vector;
+	filters_vector.resize(filters.size());
+
+	for (int i = 0; i < filters.size(); i++) {
+		Variant val = filters[i];
+		if (val.get_type() != Variant::ARRAY) {
+			continue; // Skip non-array entries
+		}
+
+		Array pair = val;
+		if (pair.size() != 2) {
+			continue; // Skip malformed pairs
+		}
+
 		String key = pair[0];
 		String value = pair[1];
-		filters_array[i] = MatchMakingKeyValuePair_t(key.utf8().get_data(), value.utf8().get_data());
+
+		filters_vector.push_back(MatchMakingKeyValuePair_t(key.utf8().get_data(), value.utf8().get_data()));
 	}
-	return filters_array;
+
+	return filters_vector;
 }
+
 
 // Gets the number of servers in the given list.
 int Steam::getServerCount(uint64_t this_server_list_request) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: getServerCount");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: getServerCount");
 	if (this_server_list_request == 0) {
 		this_server_list_request = (uint64)server_list_request;
 	}
@@ -3316,7 +3323,7 @@ int Steam::getServerCount(uint64_t this_server_list_request) {
 // Get the details of a given server in the list.
 Dictionary Steam::getServerDetails(int server, uint64_t this_server_list_request) {
 	Dictionary game_server;
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, game_server, "[STEAM] Matchmaking Servers class not found when calling: getServerDetails");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, game_server, "[STEAM] Matchmaking Servers class not found when calling: getServerDetails");
 	if (this_server_list_request == 0) {
 		this_server_list_request = (uint64)server_list_request;
 	}
@@ -3327,7 +3334,7 @@ Dictionary Steam::getServerDetails(int server, uint64_t this_server_list_request
 
 // Returns true if the list is currently refreshing its server list.
 bool Steam::isRefreshing(uint64_t this_server_list_request) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, false, "[STEAM] Matchmaking Servers class not found when calling: isRefreshing");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, false, "[STEAM] Matchmaking Servers class not found when calling: isRefreshing");
 	if (this_server_list_request == 0) {
 		this_server_list_request = (uint64)server_list_request;
 	}
@@ -3336,13 +3343,13 @@ bool Steam::isRefreshing(uint64_t this_server_list_request) {
 
 // Queries an individual game servers directly via IP/Port to request an updated ping time and other details from the server.
 int Steam::pingServer(const String &ip, uint16 port) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: pingServer");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: pingServer");
 	return SteamMatchmakingServers()->PingServer(getIPFromString(ip), port, ping_response);
 }
 
 // Request the list of players currently playing on a server.
 int Steam::playerDetails(const String &ip, uint16 port) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: playerDetails");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: playerDetails");
 	return SteamMatchmakingServers()->PlayerDetails(getIPFromString(ip), port, players_response);
 }
 
@@ -3350,7 +3357,7 @@ int Steam::playerDetails(const String &ip, uint16 port) {
 // requested will be used again to post notifications and RefreshComplete, so the callback must remain valid until another
 // RefreshComplete is called on it or the request is released with ReleaseRequest( hRequest ).
 void Steam::refreshQuery(uint64_t this_server_list_request) {
-	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == NULL, "[STEAM] Matchmaking Servers class not found when calling: refreshQuery");
+	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == nullptr, "[STEAM] Matchmaking Servers class not found when calling: refreshQuery");
 	if (this_server_list_request == 0) {
 		this_server_list_request = (uint64)server_list_request;
 	}
@@ -3359,7 +3366,7 @@ void Steam::refreshQuery(uint64_t this_server_list_request) {
 
 // Refresh a single server inside of a query (rather than all the servers).
 void Steam::refreshServer(int server, uint64_t this_server_list_request) {
-	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == NULL, "[STEAM] Matchmaking Servers class not found when calling: refreshServer");
+	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == nullptr, "[STEAM] Matchmaking Servers class not found when calling: refreshServer");
 	if (this_server_list_request == 0) {
 		this_server_list_request = (uint64)server_list_request;
 	}
@@ -3368,7 +3375,7 @@ void Steam::refreshServer(int server, uint64_t this_server_list_request) {
 
 // Releases the asynchronous request object and cancels any pending query on it if there's a pending query in progress.
 void Steam::releaseRequest(uint64_t this_server_list_request) {
-	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == NULL, "[STEAM] Matchmaking Servers class not found when calling: releaseRequest");
+	ERR_FAIL_COND_MSG(SteamMatchmakingServers() == nullptr, "[STEAM] Matchmaking Servers class not found when calling: releaseRequest");
 	if (this_server_list_request == 0) {
 		this_server_list_request = (uint64)server_list_request;
 	}
@@ -3377,20 +3384,33 @@ void Steam::releaseRequest(uint64_t this_server_list_request) {
 
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestFavoritesServerList(uint32 app_id, Array filters) {
-	server_list_request = 0;
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: requestFavoritesServerList");
-	auto filters_storage = filters_array_to_vector(filters);
-	MatchMakingKeyValuePair_t *filters_array = filters_storage.data();
-	server_list_request = SteamMatchmakingServers()->RequestFavoritesServerList((AppId_t)app_id, &filters_array, filters_storage.size(), server_list_response);
-	return (uint64)server_list_request;
+	server_list_request = nullptr;
+
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestFavoritesServerList");
+
+	Vector<MatchMakingKeyValuePair_t> filters_storage = filters_array_to_vector(filters);
+	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
+	int num_filters = filters_storage.size();
+
+	ERR_FAIL_COND_V_MSG(num_filters > 0 && filters_array == nullptr, 0, "[STEAM] Failed to get writable pointer to filters array.");
+
+	server_list_request = SteamMatchmakingServers()->RequestFavoritesServerList(
+		static_cast<AppId_t>(app_id),
+		num_filters > 0 ? &filters_array : nullptr,
+		num_filters,
+		server_list_response
+	);
+
+	return (uint64_t)server_list_request;
 }
+
 
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestFriendsServerList(uint32 app_id, Array filters) {
 	server_list_request = 0;
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: requestFriendsServerList");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestFriendsServerList");
 	auto filters_storage = filters_array_to_vector(filters);
-	MatchMakingKeyValuePair_t *filters_array = filters_storage.data();
+	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
 	server_list_request = SteamMatchmakingServers()->RequestFriendsServerList((AppId_t)app_id, &filters_array, filters_storage.size(), server_list_response);
 	return (uint64)server_list_request;
 }
@@ -3398,9 +3418,9 @@ uint64_t Steam::requestFriendsServerList(uint32 app_id, Array filters) {
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestHistoryServerList(uint32 app_id, Array filters) {
 	server_list_request = 0;
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: requestHistoryServerList");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestHistoryServerList");
 	auto filters_storage = filters_array_to_vector(filters);
-	MatchMakingKeyValuePair_t *filters_array = filters_storage.data();
+	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
 	server_list_request = SteamMatchmakingServers()->RequestHistoryServerList((AppId_t)app_id, &filters_array, filters_storage.size(), server_list_response);
 	return (uint64)server_list_request;
 }
@@ -3408,9 +3428,9 @@ uint64_t Steam::requestHistoryServerList(uint32 app_id, Array filters) {
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestInternetServerList(uint32 app_id, Array filters) {
 	server_list_request = 0;
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: requestInternetServerList");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestInternetServerList");
 	auto filters_storage = filters_array_to_vector(filters);
-	MatchMakingKeyValuePair_t *filters_array = filters_storage.data();
+	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
 	server_list_request = SteamMatchmakingServers()->RequestInternetServerList((AppId_t)app_id, &filters_array, filters_storage.size(), server_list_response);
 	return (uint64)server_list_request;
 }
@@ -3418,7 +3438,7 @@ uint64_t Steam::requestInternetServerList(uint32 app_id, Array filters) {
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestLANServerList(uint32 app_id) {
 	server_list_request = 0;
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: requestLANServerList");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestLANServerList");
 	server_list_request = SteamMatchmakingServers()->RequestLANServerList((AppId_t)app_id, server_list_response);
 	return (uint64)server_list_request;
 }
@@ -3426,16 +3446,16 @@ uint64_t Steam::requestLANServerList(uint32 app_id) {
 // Request a new list of servers of a particular type.  These calls each correspond to one of the EMatchMakingType values.
 uint64_t Steam::requestSpectatorServerList(uint32 app_id, Array filters) {
 	server_list_request = 0;
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: requestSpectatorServerList");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: requestSpectatorServerList");
 	auto filters_storage = filters_array_to_vector(filters);
-	MatchMakingKeyValuePair_t *filters_array = filters_storage.data();
+	MatchMakingKeyValuePair_t *filters_array = filters_storage.ptrw();
 	server_list_request = SteamMatchmakingServers()->RequestSpectatorServerList((AppId_t)app_id, &filters_array, filters_storage.size(), server_list_response);
 	return (uint64)server_list_request;
 }
 
 // Request the list of rules that the server is running (See ISteamGameServer::SetKeyValue() to set the rules server side)
 int Steam::serverRules(const String &ip, uint16 port) {
-	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == NULL, 0, "[STEAM] Matchmaking Servers class not found when calling: serverRules");
+	ERR_FAIL_COND_V_MSG(SteamMatchmakingServers() == nullptr, 0, "[STEAM] Matchmaking Servers class not found when calling: serverRules");
 	return SteamMatchmakingServers()->ServerRules(getIPFromString(ip), port, rules_response);
 }
 
@@ -3444,55 +3464,55 @@ int Steam::serverRules(const String &ip, uint16 port) {
 
 // Is Steam music enabled.
 bool Steam::musicIsEnabled() {
-	ERR_FAIL_COND_V_MSG(SteamMusic() == NULL, false, "[STEAM] Music class not found when calling: musicIsEnabled");
+	ERR_FAIL_COND_V_MSG(SteamMusic() == nullptr, false, "[STEAM] Music class not found when calling: musicIsEnabled");
 	return SteamMusic()->BIsEnabled();
 }
 
 // Is Steam music playing something.
 bool Steam::musicIsPlaying() {
-	ERR_FAIL_COND_V_MSG(SteamMusic() == NULL, false, "[STEAM] Music class not found when calling: musicIsPlaying");
+	ERR_FAIL_COND_V_MSG(SteamMusic() == nullptr, false, "[STEAM] Music class not found when calling: musicIsPlaying");
 	return SteamMusic()->BIsPlaying();
 }
 
 // Gets the current status of the Steam Music player
 AudioPlaybackStatus Steam::getPlaybackStatus() {
-	ERR_FAIL_COND_V_MSG(SteamMusic() == NULL, AUDIO_PLAYBACK_UNDEFINED, "[STEAM] Music class not found when calling: getPlaybackStatus");
+	ERR_FAIL_COND_V_MSG(SteamMusic() == nullptr, AUDIO_PLAYBACK_UNDEFINED, "[STEAM] Music class not found when calling: getPlaybackStatus");
 	return AudioPlaybackStatus(SteamMusic()->GetPlaybackStatus());
 }
 
 // Get the volume level of the music.
 float Steam::musicGetVolume() {
-	ERR_FAIL_COND_V_MSG(SteamMusic() == NULL, 0.0, "[STEAM] Music class not found when calling: musicGetVolume");
+	ERR_FAIL_COND_V_MSG(SteamMusic() == nullptr, 0.0, "[STEAM] Music class not found when calling: musicGetVolume");
 	return SteamMusic()->GetVolume();
 }
 
 // Pause whatever Steam music is playing.
 void Steam::musicPause() {
-	ERR_FAIL_COND_MSG(SteamMusic() == NULL, "[STEAM] Music class not found when calling: musicPause");
+	ERR_FAIL_COND_MSG(SteamMusic() == nullptr, "[STEAM] Music class not found when calling: musicPause");
 	SteamMusic()->Pause();
 }
 
 // Play current track/album.
 void Steam::musicPlay() {
-	ERR_FAIL_COND_MSG(SteamMusic() == NULL, "[STEAM] Music class not found when calling: musicPlay");
+	ERR_FAIL_COND_MSG(SteamMusic() == nullptr, "[STEAM] Music class not found when calling: musicPlay");
 	SteamMusic()->Play();
 }
 
 // Play next track/album.
 void Steam::musicPlayNext() {
-	ERR_FAIL_COND_MSG(SteamMusic() == NULL, "[STEAM] Music class not found when calling: musicPlayNext");
+	ERR_FAIL_COND_MSG(SteamMusic() == nullptr, "[STEAM] Music class not found when calling: musicPlayNext");
 	SteamMusic()->PlayNext();
 }
 
 // Play previous track/album.
 void Steam::musicPlayPrev() {
-	ERR_FAIL_COND_MSG(SteamMusic() == NULL, "[STEAM] Music class not found when calling: musicPlayPrev");
+	ERR_FAIL_COND_MSG(SteamMusic() == nullptr, "[STEAM] Music class not found when calling: musicPlayPrev");
 	SteamMusic()->PlayPrevious();
 }
 
 // Set the volume of Steam music.
 void Steam::musicSetVolume(float volume) {
-	ERR_FAIL_COND_MSG(SteamMusic() == NULL, "[STEAM] Music class not found when calling: musicSetVolume");
+	ERR_FAIL_COND_MSG(SteamMusic() == nullptr, "[STEAM] Music class not found when calling: musicSetVolume");
 	SteamMusic()->SetVolume(volume);
 }
 
@@ -3503,195 +3523,195 @@ void Steam::musicSetVolume(float volume) {
 //
 // If remote access was successfully activated.
 bool Steam::activationSuccess(bool activate) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: activationSuccess");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: activationSuccess");
 	return SteamMusicRemote()->BActivationSuccess(activate);
 }
 
 // Did the currenty music entry just change?
 bool Steam::currentEntryDidChange() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: currentEntryDidChange");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: currentEntryDidChange");
 	return SteamMusicRemote()->CurrentEntryDidChange();
 }
 
 // Is the current music entry available?
 bool Steam::currentEntryIsAvailable(bool available) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: currentEntryIsAvailable");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: currentEntryIsAvailable");
 	return SteamMusicRemote()->CurrentEntryIsAvailable(available);
 }
 
 // Will the current music entry change?
 bool Steam::currentEntryWillChange() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: currentEntryWillChange");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: currentEntryWillChange");
 	return SteamMusicRemote()->CurrentEntryWillChange();
 }
 
 // Disconnect from remote music client / host.
 bool Steam::deregisterSteamMusicRemote() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: deregisterSteamMusicRemote");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: deregisterSteamMusicRemote");
 	return SteamMusicRemote()->DeregisterSteamMusicRemote();
 }
 
 // Enable track loop on client.
 bool Steam::enableLooped(bool loop) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->EnableLooped(loop);
 }
 
 // Enable playlists on client.
 bool Steam::enablePlaylists(bool playlists) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->EnablePlaylists(playlists);
 }
 
 // Play the next track on client.
 bool Steam::enablePlayNext(bool next) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->EnablePlayNext(next);
 }
 
 // Play previous track on client.
 bool Steam::enablePlayPrevious(bool previous) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->EnablePlayPrevious(previous);
 }
 
 // Enable the music queue on the client.
 bool Steam::enableQueue(bool queue) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->EnableQueue(queue);
 }
 
 // Enable shuffle on the client.
 bool Steam::enableShuffled(bool shuffle) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->EnableShuffled(shuffle);
 }
 
 // Is a remote music client / host connected?
 bool Steam::isCurrentMusicRemote() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: isCurrentMusicRemote");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: isCurrentMusicRemote");
 	return SteamMusicRemote()->BIsCurrentMusicRemote();
 }
 
 // Has the playlist changed?
 bool Steam::playlistDidChange() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->PlaylistDidChange();
 }
 
 // Will the playlist change?
 bool Steam::playlistWillChange() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->PlaylistWillChange();
 }
 
 // Did the song queue change?
 bool Steam::queueDidChange() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->QueueDidChange();
 }
 
 // Will the song queue change?
 bool Steam::queueWillChange() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->QueueWillChange();
 }
 
 // Connect to a music remote client / host?
 bool Steam::registerSteamMusicRemote(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->RegisterSteamMusicRemote(name.utf8().get_data());
 }
 
 // Reset the playlist entries.
 bool Steam::resetPlaylistEntries() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: enableLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: enableLooped");
 	return SteamMusicRemote()->ResetPlaylistEntries();
 }
 
 // Reset the song queue entries.
 bool Steam::resetQueueEntries() {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: resetQueueEntries");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: resetQueueEntries");
 	return SteamMusicRemote()->ResetQueueEntries();
 }
 
 // Set a new current playlist.
 bool Steam::setCurrentPlaylistEntry(int id) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: setCurrentPlaylistEntry");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: setCurrentPlaylistEntry");
 	return SteamMusicRemote()->SetCurrentPlaylistEntry(id);
 }
 
 // Set a new current song queue.
 bool Steam::setCurrentQueueEntry(int id) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: setCurrentQueueEntry");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: setCurrentQueueEntry");
 	return SteamMusicRemote()->SetCurrentQueueEntry(id);
 }
 
 // Set a new display name.
 bool Steam::setDisplayName(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: setDisplayName");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: setDisplayName");
 	return SteamMusicRemote()->SetDisplayName(name.utf8().get_data());
 }
 
 // Set a new playlist entry.
 bool Steam::setPlaylistEntry(int id, int position, const String &entry_text) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: setPlaylistEntry");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: setPlaylistEntry");
 	return SteamMusicRemote()->SetPlaylistEntry(id, position, entry_text.utf8().get_data());
 }
 
 // Set a PNG icon for a song? A playlist?
 bool Steam::setPNGIcon64x64(PackedByteArray icon) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: setPNGIcon64x64");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: setPNGIcon64x64");
 	uint32 icon_size = icon.size();
 	return SteamMusicRemote()->SetPNGIcon_64x64((void *)icon.ptr(), icon_size);
 }
 
 // Set a new queue entry.
 bool Steam::setQueueEntry(int id, int position, const String &entry_text) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: setQueueEntry");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: setQueueEntry");
 	return SteamMusicRemote()->SetQueueEntry(id, position, entry_text.utf8().get_data());
 }
 
 // Update the current song entry's cover art.
 bool Steam::updateCurrentEntryCoverArt(PackedByteArray art) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: updateCurrentEntryCoverArt");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: updateCurrentEntryCoverArt");
 	uint32 art_size = art.size();
 	return SteamMusicRemote()->UpdateCurrentEntryCoverArt((void *)art.ptr(), art_size);
 }
 
 // Update the current seconds that have elapsed for an entry.
 bool Steam::updateCurrentEntryElapsedSeconds(int seconds) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: updateCurrentEntryElapsedSeconds");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: updateCurrentEntryElapsedSeconds");
 	return SteamMusicRemote()->UpdateCurrentEntryElapsedSeconds(seconds);
 }
 
 // Update the current song entry's text?
 bool Steam::updateCurrentEntryText(const String &text) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: updateCurrentEntryText");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: updateCurrentEntryText");
 	return SteamMusicRemote()->UpdateCurrentEntryText(text.utf8().get_data());
 }
 
 // Update looped or not.
 bool Steam::updateLooped(bool looped) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: updateLooped");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: updateLooped");
 	return SteamMusicRemote()->UpdateLooped(looped);
 }
 
 // Update the current playback status; 0 - undefined, 1 - playing, 2 - paused, 3 - idle.
 bool Steam::updatePlaybackStatus(AudioPlaybackStatus status) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: updatePlaybackStatus");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: updatePlaybackStatus");
 	return SteamMusicRemote()->UpdatePlaybackStatus((AudioPlayback_Status)status);
 }
 
 // Update whether to shuffle or not.
 bool Steam::updateShuffled(bool shuffle) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: updateShuffled");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: updateShuffled");
 	return SteamMusicRemote()->UpdateShuffled(shuffle);
 }
 
 // Volume is between 0.0 and 1.0.
 bool Steam::updateVolume(float volume) {
-	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == NULL, false, "[STEAM] Music Remote class not found when calling: updateVolume");
+	ERR_FAIL_COND_V_MSG(SteamMusicRemote() == nullptr, false, "[STEAM] Music Remote class not found when calling: updateVolume");
 	return SteamMusicRemote()->UpdateVolume(volume);
 }
 
@@ -3700,7 +3720,7 @@ bool Steam::updateVolume(float volume) {
 
 // This allows the game to specify accept an incoming packet.
 bool Steam::acceptP2PSessionWithUser(uint64_t remote_steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, false, "[STEAM] Game Server class not found when calling: acceptP2PSessionWithUser");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, false, "[STEAM] Game Server class not found when calling: acceptP2PSessionWithUser");
 	CSteamID steam_id = createSteamID(remote_steam_id);
 	return SteamNetworking()->AcceptP2PSessionWithUser(steam_id);
 }
@@ -3708,13 +3728,13 @@ bool Steam::acceptP2PSessionWithUser(uint64_t remote_steam_id) {
 // Allow or disallow P2P connections to fall back to being relayed through the Steam servers if a direct connection or
 // NAT-traversal cannot be established.
 bool Steam::allowP2PPacketRelay(bool allow) {
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, false, "[STEAM] Game Server class not found when calling: allowP2PPacketRelay");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, false, "[STEAM] Game Server class not found when calling: allowP2PPacketRelay");
 	return SteamNetworking()->AllowP2PPacketRelay(allow);
 }
 
 // Closes a P2P channel when you're done talking to a user on the specific channel.
 bool Steam::closeP2PChannelWithUser(uint64_t remote_steam_id, int channel) {
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, false, "[STEAM] Game Server class not found when calling: closeP2PChannelWithUser");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, false, "[STEAM] Game Server class not found when calling: closeP2PChannelWithUser");
 	CSteamID steam_id = createSteamID(remote_steam_id);
 	return SteamNetworking()->CloseP2PChannelWithUser(steam_id, channel);
 }
@@ -3722,7 +3742,7 @@ bool Steam::closeP2PChannelWithUser(uint64_t remote_steam_id, int channel) {
 // This should be called when you're done communicating with a user, as this will free up all of the resources allocated for the
 // connection under-the-hood.
 bool Steam::closeP2PSessionWithUser(uint64_t remote_steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, false, "[STEAM] Game Server class not found when calling: closeP2PSessionWithUser");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, false, "[STEAM] Game Server class not found when calling: closeP2PSessionWithUser");
 	CSteamID steam_id = createSteamID(remote_steam_id);
 	return SteamNetworking()->CloseP2PSessionWithUser(steam_id);
 }
@@ -3730,7 +3750,7 @@ bool Steam::closeP2PSessionWithUser(uint64_t remote_steam_id) {
 // Fills out a P2PSessionState_t structure with details about the connection like whether or not there is an active connection.
 Dictionary Steam::getP2PSessionState(uint64_t remote_steam_id) {
 	Dictionary result;
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, result, "[STEAM] Game Server class not found when calling: getP2PSessionState");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, result, "[STEAM] Game Server class not found when calling: getP2PSessionState");
 	CSteamID steam_id = createSteamID(remote_steam_id);
 	P2PSessionState_t p2pSessionState;
 	if (SteamNetworking()->GetP2PSessionState(steam_id, &p2pSessionState)) {
@@ -3748,7 +3768,7 @@ Dictionary Steam::getP2PSessionState(uint64_t remote_steam_id) {
 
 // Calls IsP2PPacketAvailable() under the hood, returns the size of the available packet or zero if there is no such packet.
 uint32_t Steam::getAvailableP2PPacketSize(int channel) {
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, 0, "[STEAM] Game Server class not found when calling: getAvailableP2PPacketSize");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, 0, "[STEAM] Game Server class not found when calling: getAvailableP2PPacketSize");
 	uint32_t message_size = 0;
 	return (SteamNetworking()->IsP2PPacketAvailable(&message_size, channel)) ? message_size : 0;
 }
@@ -3756,7 +3776,7 @@ uint32_t Steam::getAvailableP2PPacketSize(int channel) {
 // Reads in a packet that has been sent from another user via SendP2PPacket.
 Dictionary Steam::readP2PPacket(uint32_t packet, int channel) {
 	Dictionary result;
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, result, "[STEAM] Game Server class not found when calling: readP2PPacket");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, result, "[STEAM] Game Server class not found when calling: readP2PPacket");
 	PackedByteArray data;
 	data.resize(packet);
 	CSteamID steam_id;
@@ -3776,7 +3796,7 @@ Dictionary Steam::readP2PPacket(uint32_t packet, int channel) {
 
 // Sends a P2P packet to the specified user.
 bool Steam::sendP2PPacket(uint64_t remote_steam_id, PackedByteArray data, P2PSend send_type, int channel) {
-	ERR_FAIL_COND_V_MSG(SteamNetworking() == NULL, false, "[STEAM] Game Server class not found when calling: sendP2PPacket");
+	ERR_FAIL_COND_V_MSG(SteamNetworking() == nullptr, false, "[STEAM] Game Server class not found when calling: sendP2PPacket");
 	CSteamID steam_id = createSteamID(remote_steam_id);
 	return SteamNetworking()->SendP2PPacket(steam_id, data.ptr(), data.size(), EP2PSend(send_type), channel);
 }
@@ -3784,30 +3804,30 @@ bool Steam::sendP2PPacket(uint64_t remote_steam_id, PackedByteArray data, P2PSen
 
 ///// NETWORKING MESSAGES
 
-// AcceptSessionWithUser() should only be called in response to a SteamP2PSessionRequest_t callback SteamP2PSessionRequest_t 
+// AcceptSessionWithUser() should only be called in response to a SteamP2PSessionRequest_t callback SteamP2PSessionRequest_t
 // will be posted if another user tries to send you a message, and you haven't tried to talk to them.
 bool Steam::acceptSessionWithUser(uint64_t remote_steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] Networking Messages class not found when calling: acceptSessionWithUser");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] Networking Messages class not found when calling: acceptSessionWithUser");
 	return SteamNetworkingMessages()->AcceptSessionWithUser(getIdentityFromSteamID(remote_steam_id));
 }
 
 // Call this  when you're done talking to a user on a specific channel. Once all open channels to a user have been closed,
 // the open session to the user will be closed, and any new data from this user will trigger a SteamP2PSessionRequest_t callback.
 bool Steam::closeChannelWithUser(uint64_t remote_steam_id, int channel) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] Networking Messages class not found when calling: closeChannelWithUser");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] Networking Messages class not found when calling: closeChannelWithUser");
 	return SteamNetworkingMessages()->CloseChannelWithUser(getIdentityFromSteamID(remote_steam_id), channel);
 }
 
 // Call this when you're done talking to a user to immediately free up resources under-the-hood.
 bool Steam::closeSessionWithUser(uint64_t remote_steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] Networking Messages class not found when calling: closeSessionWithUser");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] Networking Messages class not found when calling: closeSessionWithUser");
 	return SteamNetworkingMessages()->CloseSessionWithUser(getIdentityFromSteamID(remote_steam_id));
 }
 
 // Returns information about the latest state of a connection, if any, with the given peer.
 Dictionary Steam::getSessionConnectionInfo(uint64_t remote_steam_id, bool get_connection, bool get_status) {
 	Dictionary connection_info;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, connection_info, "[STEAM] Networking Messages class not found when calling: getSessionConnectionInfo");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, connection_info, "[STEAM] Networking Messages class not found when calling: getSessionConnectionInfo");
 	SteamNetConnectionInfo_t this_info;
 	SteamNetConnectionRealTimeStatus_t this_status;
 	int connection_state = SteamNetworkingMessages()->GetSessionConnectionInfo(getIdentityFromSteamID(remote_steam_id), &this_info, &this_status);
@@ -3852,7 +3872,7 @@ Dictionary Steam::getSessionConnectionInfo(uint64_t remote_steam_id, bool get_co
 // messages returned into your list.  (0 if no message are available on that channel.)
 Array Steam::receiveMessagesOnChannel(int channel, int max_messages) {
 	Array messages;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, messages, "[STEAM] Networking Messages class not found when calling: receiveMessagesOnChannel");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, messages, "[STEAM] Networking Messages class not found when calling: receiveMessagesOnChannel");
 	// Allocate the space for the messages
 	SteamNetworkingMessage_t **channel_messages = new SteamNetworkingMessage_t *[max_messages];
 	// Get the messages
@@ -3892,7 +3912,7 @@ Array Steam::receiveMessagesOnChannel(int channel, int max_messages) {
 // Sends a message to the specified host. If we don't already have a session with that user, a session is implicitly created.
 // There might be some handshaking that needs to happen before we can actually begin sending message data.
 int Steam::sendMessageToUser(uint64_t remote_steam_id, const PackedByteArray data, int flags, int channel) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] Networking Messages class not found when calling: sendMessageToUser");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] Networking Messages class not found when calling: sendMessageToUser");
 	return SteamNetworkingMessages()->SendMessageToUser(getIdentityFromSteamID(remote_steam_id), data.ptr(), data.size(), flags, channel);
 }
 
@@ -3901,14 +3921,14 @@ int Steam::sendMessageToUser(uint64_t remote_steam_id, const PackedByteArray dat
 
 // Creates a "server" socket that listens for clients to connect to by calling ConnectByIPAddress, over ordinary UDP (IPv4 or IPv6)
 uint32 Steam::createListenSocketIP(String ip_address, Dictionary config_options) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: createListenSocketIP");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: createListenSocketIP");
 	uint32 listen_socket = SteamNetworkingSockets()->CreateListenSocketIP(getSteamIPFromString(ip_address), config_options.size(), convert_config_options(config_options));
 	return listen_socket;
 }
 
 // Like CreateListenSocketIP, but clients will connect using ConnectP2P. The connection will be relayed through the Valve network.
 uint32 Steam::createListenSocketP2P(int virtual_port, Dictionary config_options) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: createListenSocketP2P");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: createListenSocketP2P");
 	uint32 listen_socket = SteamNetworkingSockets()->CreateListenSocketP2P(virtual_port, config_options.size(), convert_config_options(config_options));
 	return listen_socket;
 }
@@ -3917,7 +3937,7 @@ uint32 Steam::createListenSocketP2P(int virtual_port, Dictionary config_options)
 // which depends on the platform and library configuration. (E.g. on Steam, it goes through the steam backend.) The traffic is
 // relayed over the Steam Datagram Relay network.
 uint32 Steam::connectP2P(uint64_t remote_steam_id, int virtual_port, Dictionary config_options) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: connectP2P");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: connectP2P");
 	uint32 listen_socket = SteamNetworkingSockets()->ConnectP2P(getIdentityFromSteamID(remote_steam_id), virtual_port, config_options.size(), convert_config_options(config_options));
 	return listen_socket;
 }
@@ -3925,33 +3945,33 @@ uint32 Steam::connectP2P(uint64_t remote_steam_id, int virtual_port, Dictionary 
 // Begin connecting to a server listen socket that is identified using an [ip-address]:[port], i.e. 127.0.0.1:27015. Used with
 // createListenSocketIP
 uint32 Steam::connectByIPAddress(String ip_address_with_port, Dictionary config_options) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: connectByIPAddress");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: connectByIPAddress");
 	return SteamNetworkingSockets()->ConnectByIPAddress(getSteamIPFromString(ip_address_with_port), config_options.size(), convert_config_options(config_options));
 }
 
 // Client call to connect to a server hosted in a Valve data center, on the specified virtual port. You must have placed a ticket
 // for this server into the cache, or else this connect attempt will fail!
 uint32 Steam::connectToHostedDedicatedServer(uint64_t remote_steam_id, int virtual_port, Dictionary config_options) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: connectToHostedDedicatedServer");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: connectToHostedDedicatedServer");
 	uint32 listen_socket = SteamNetworkingSockets()->ConnectToHostedDedicatedServer(getIdentityFromSteamID(remote_steam_id), virtual_port, config_options.size(), convert_config_options(config_options));
 	return listen_socket;
 }
 
 // Accept an incoming connection that has been received on a listen socket.
 int Steam::acceptConnection(uint32 connection_handle) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: acceptConnection");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: acceptConnection");
 	return SteamNetworkingSockets()->AcceptConnection((HSteamNetConnection)connection_handle);
 }
 
 // Disconnects from the remote host and invalidates the connection handle. Any unread data on the connection is discarded.
 bool Steam::closeConnection(uint32 peer, int reason, const String &debug_message, bool linger) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, false, "[STEAM] Networking Sockets class not found when calling: closeConnection");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, false, "[STEAM] Networking Sockets class not found when calling: closeConnection");
 	return SteamNetworkingSockets()->CloseConnection((HSteamNetConnection)peer, reason, debug_message.utf8().get_data(), linger);
 }
 
 // Destroy a listen socket. All the connections that were accepted on the listen socket are closed ungracefully.
 bool Steam::closeListenSocket(uint32 socket) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, false, "[STEAM] Networking Sockets class not found when calling: closeListenSocket");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, false, "[STEAM] Networking Sockets class not found when calling: closeListenSocket");
 	return SteamNetworkingSockets()->CloseListenSocket((HSteamListenSocket)socket);
 }
 
@@ -3959,7 +3979,7 @@ bool Steam::closeListenSocket(uint32 socket) {
 // that your client/server code can work the same even when you are running a local "server".
 Dictionary Steam::createSocketPair(bool loopback, uint64_t remote_steam_id1, uint64_t remote_steam_id2) {
 	Dictionary connection_pair;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, connection_pair, "[STEAM] Networking Sockets class not found when calling: createSocketPair");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, connection_pair, "[STEAM] Networking Sockets class not found when calling: createSocketPair");
 	uint32 connection1 = 0;
 	uint32 connection2 = 0;
 	SteamNetworkingIdentity remote_identity1 = getIdentityFromSteamID(remote_steam_id1);
@@ -3975,7 +3995,7 @@ Dictionary Steam::createSocketPair(bool loopback, uint64_t remote_steam_id1, uin
 // Send a message to the remote host on the specified connection.
 Dictionary Steam::sendMessageToConnection(uint32 connection_handle, const PackedByteArray data, int flags) {
 	Dictionary message_response;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, message_response, "[STEAM] Networking Sockets class not found when calling: sendMessageToConnection");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, message_response, "[STEAM] Networking Sockets class not found when calling: sendMessageToConnection");
 	int64 number;
 	int result = SteamNetworkingSockets()->SendMessageToConnection((HSteamNetConnection)connection_handle, data.ptr(), data.size(), flags, &number);
 	// Populate the dictionary
@@ -3990,7 +4010,7 @@ Dictionary Steam::sendMessageToConnection(uint32 connection_handle, const Packed
 // Current does not compile on Windows but does on Linux
 // Array Steam::sendMessages(Array messages, uint32 connection_handle, int flags) {
 // 	Array result;
-// 	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, result, "[STEAM SERVER] Networking Sockets class not found when calling: sendMessages");
+// 	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, result, "[STEAM SERVER] Networking Sockets class not found when calling: sendMessages");
 
 // 	int total_messages = messages.size();
 // 	SteamNetworkingMessage_t *messages_payload[total_messages];
@@ -4019,7 +4039,7 @@ Dictionary Steam::sendMessageToConnection(uint32 connection_handle, const Packed
 
 // Flush any messages waiting on the Nagle timer and send them at the next transmission opportunity (often that means right now).
 int Steam::flushMessagesOnConnection(uint32 connection_handle) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: flushMessagesOnConnection");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: flushMessagesOnConnection");
 	return SteamNetworkingSockets()->FlushMessagesOnConnection((HSteamNetConnection)connection_handle);
 }
 
@@ -4027,7 +4047,7 @@ int Steam::flushMessagesOnConnection(uint32 connection_handle) {
 // to nMaxMessages. If the connection handle is invalid, -1 is returned. If no data is available, 0, is returned.
 Array Steam::receiveMessagesOnConnection(uint32 connection_handle, int max_messages) {
 	Array messages;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, messages, "[STEAM] Networking Sockets class not found when calling: receiveMessagesOnConnection");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, messages, "[STEAM] Networking Sockets class not found when calling: receiveMessagesOnConnection");
 	SteamNetworkingMessage_t **connection_messages = new SteamNetworkingMessage_t *[max_messages];
 	int available_messages = SteamNetworkingSockets()->ReceiveMessagesOnConnection((HSteamNetConnection)connection_handle, connection_messages, max_messages);
 
@@ -4062,20 +4082,20 @@ Array Steam::receiveMessagesOnConnection(uint32 connection_handle, int max_messa
 
 // Create a new poll group.
 uint32 Steam::createPollGroup() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: createPollGroup");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: createPollGroup");
 	return SteamNetworkingSockets()->CreatePollGroup();
 }
 
 // Destroy a poll group created with CreatePollGroup.
 bool Steam::destroyPollGroup(uint32 poll_group) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, false, "[STEAM] Networking Sockets class not found when calling: destroyPollGroup");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, false, "[STEAM] Networking Sockets class not found when calling: destroyPollGroup");
 	return SteamNetworkingSockets()->DestroyPollGroup((HSteamNetPollGroup)poll_group);
 }
 
 // Assign a connection to a poll group. Note that a connection may only belong to a single poll group. Adding a connection to a
 // poll group implicitly removes it from any other poll group it is in.
 bool Steam::setConnectionPollGroup(uint32 connection_handle, uint32 poll_group) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, false, "[STEAM] Networking Sockets class not found when calling: setConnectionPollGroup");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, false, "[STEAM] Networking Sockets class not found when calling: setConnectionPollGroup");
 	return SteamNetworkingSockets()->SetConnectionPollGroup((HSteamNetConnection)connection_handle, (HSteamNetPollGroup)poll_group);
 }
 
@@ -4083,10 +4103,10 @@ bool Steam::setConnectionPollGroup(uint32 connection_handle, uint32 poll_group) 
 // SteamNetworkingMessage_t::m_conn to know which connection. (SteamNetworkingMessage_t::m_nConnUserData might also be useful.)
 Array Steam::receiveMessagesOnPollGroup(uint32 poll_group, int max_messages) {
 	Array messages;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, messages, "[STEAM] Networking Sockets class not found when calling: receiveMessagesOnPollGroup");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, messages, "[STEAM] Networking Sockets class not found when calling: receiveMessagesOnPollGroup");
 	SteamNetworkingMessage_t** poll_messages = new SteamNetworkingMessage_t *[max_messages];
 	int available_messages = SteamNetworkingSockets()->ReceiveMessagesOnPollGroup((HSteamNetPollGroup)poll_group, poll_messages, max_messages);
-		
+
 	for(int i = 0; i < available_messages; i++) {
 		Dictionary message;
 
@@ -4120,7 +4140,7 @@ Array Steam::receiveMessagesOnPollGroup(uint32 poll_group, int max_messages) {
 // Returns basic information about the high-level state of the connection. Returns false if the connection handle is invalid.
 Dictionary Steam::getConnectionInfo(uint32 connection_handle) {
 	Dictionary connection_info;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, connection_info, "[STEAM] Networking Sockets class not found when calling: getConnectionInfo");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, connection_info, "[STEAM] Networking Sockets class not found when calling: getConnectionInfo");
 	SteamNetConnectionInfo_t info;
 	if (SteamNetworkingSockets()->GetConnectionInfo((HSteamNetConnection)connection_handle, &info)) {
 		connection_info["identity"] = getSteamIDFromIdentity(info.m_identityRemote);
@@ -4142,31 +4162,31 @@ Dictionary Steam::getConnectionInfo(uint32 connection_handle) {
 // information is subject to change.
 Dictionary Steam::getDetailedConnectionStatus(uint32 connection) {
 	Dictionary connection_status;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, connection_status, "[STEAM] Networking Sockets class not found when calling: getDetailedConnectionStatus");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, connection_status, "[STEAM] Networking Sockets class not found when calling: getDetailedConnectionStatus");
 	char buffer[STEAM_LARGE_BUFFER_SIZE];
 	int success = SteamNetworkingSockets()->GetDetailedConnectionStatus((HSteamNetConnection)connection, buffer, STEAM_LARGE_BUFFER_SIZE);
 
 	connection_status["success"] = success;
 	connection_status["status"] = buffer;
-	return connection_status; 
+	return connection_status;
 }
 
 // Fetch connection user data. Returns -1 if handle is invalid or if you haven't set any userdata on the connection.
 uint64_t Steam::getConnectionUserData(uint32 peer) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: getConnectionUserData");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: getConnectionUserData");
 	return SteamNetworkingSockets()->GetConnectionUserData((HSteamNetConnection)peer);
 }
 
 // Set a name for the connection, used mostly for debugging
 void Steam::setConnectionName(uint32 peer, const String &name) {
-	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == NULL, "[STEAM] Networking Sockets class not found when calling: setConnectionName");
+	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == nullptr, "[STEAM] Networking Sockets class not found when calling: setConnectionName");
 	SteamNetworkingSockets()->SetConnectionName((HSteamNetConnection)peer, name.utf8().get_data());
 }
 
 // Fetch connection name into your buffer, which is at least nMaxLen bytes. Returns false if handle is invalid.
 String Steam::getConnectionName(uint32 peer) {
 	String connection_name = "";
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, connection_name, "[STEAM] Networking Sockets class not found when calling: getConnectionName");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, connection_name, "[STEAM] Networking Sockets class not found when calling: getConnectionName");
 	char name[STEAM_BUFFER_SIZE];
 	if (SteamNetworkingSockets()->GetConnectionName((HSteamNetConnection)peer, name, STEAM_BUFFER_SIZE)) {
 		connection_name += name;
@@ -4177,7 +4197,7 @@ String Steam::getConnectionName(uint32 peer) {
 // Returns local IP and port that a listen socket created using CreateListenSocketIP is bound to.
 String Steam::getListenSocketAddress(uint32 socket, bool with_port) {
 	String socket_address = "";
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, socket_address, "[STEAM] Networking Sockets class not found when calling: getListenSocketAddress");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, socket_address, "[STEAM] Networking Sockets class not found when calling: getListenSocketAddress");
 	SteamNetworkingIPAddr address;
 	if (SteamNetworkingSockets()->GetListenSocketAddress((HSteamListenSocket)socket, &address)) {
 		socket_address = getStringFromSteamIP(address);
@@ -4189,14 +4209,14 @@ String Steam::getListenSocketAddress(uint32 socket, bool with_port) {
 // taken to obtain the necessary certificates. (This includes a certificate for us, as well as any CA certificates needed to
 // authenticate peers.)
 NetworkingAvailability Steam::initAuthentication() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, NETWORKING_AVAILABILITY_UNKNOWN, "[STEAM] Networking Sockets class not found when calling: initAuthentication");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, NETWORKING_AVAILABILITY_UNKNOWN, "[STEAM] Networking Sockets class not found when calling: initAuthentication");
 	return NetworkingAvailability(SteamNetworkingSockets()->InitAuthentication());
 }
 
 // Query our readiness to participate in authenticated communications. A SteamNetAuthenticationStatus_t callback is posted any
 // time this status changes, but you can use this function to query it at any time.
 NetworkingAvailability Steam::getAuthenticationStatus() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, NETWORKING_AVAILABILITY_UNKNOWN, "[STEAM] Networking Sockets class not found when calling: getAuthenticationStatus");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, NETWORKING_AVAILABILITY_UNKNOWN, "[STEAM] Networking Sockets class not found when calling: getAuthenticationStatus");
 	return NetworkingAvailability(SteamNetworkingSockets()->GetAuthenticationStatus(NULL));
 }
 
@@ -4236,14 +4256,14 @@ NetworkingAvailability Steam::getAuthenticationStatus() {
 // Returns the value of the SDR_LISTEN_PORT environment variable. This is the UDP server your server will be listening on. This
 // will configured automatically for you in production environments.
 uint16 Steam::getHostedDedicatedServerPort() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: getHostedDedicatedServerPort");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: getHostedDedicatedServerPort");
 	return SteamNetworkingSockets()->GetHostedDedicatedServerPort();
 }
 
 // Returns 0 if SDR_LISTEN_PORT is not set. Otherwise, returns the data center the server is running in. This will be
 // k_SteamDatagramPOPID_dev in non-production environment.
 uint32 Steam::getHostedDedicatedServerPOPId() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: getHostedDedicatedServerPOPId");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: getHostedDedicatedServerPOPId");
 	return SteamNetworkingSockets()->GetHostedDedicatedServerPOPID();
 }
 
@@ -4260,7 +4280,7 @@ uint32 Steam::getHostedDedicatedServerPOPId() {
 // Create a listen socket on the specified virtual port. The physical UDP port to use will be determined by the SDR_LISTEN_PORT
 // environment variable. If a UDP port is not configured, this call will fail.
 uint32 Steam::createHostedDedicatedServerListenSocket(int port, Dictionary config_options) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: createHostedDedicatedServerListenSocket");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: createHostedDedicatedServerListenSocket");
 	uint32 listen_socket = SteamGameServerNetworkingSockets()->CreateHostedDedicatedServerListenSocket(port, config_options.size(), convert_config_options(config_options));
 	return listen_socket;
 }
@@ -4284,11 +4304,11 @@ uint32 Steam::createHostedDedicatedServerListenSocket(int port, Dictionary confi
 // Returns a small set of information about the real-time state of the connection and the queue status of each lane.
 Dictionary Steam::getConnectionRealTimeStatus(uint32 connection, int lanes, bool get_status) {
 	Dictionary real_time_status;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, real_time_status, "[STEAM] Networking Sockets class not found when calling: getConnectionRealTimeStatus");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, real_time_status, "[STEAM] Networking Sockets class not found when calling: getConnectionRealTimeStatus");
 	SteamNetConnectionRealTimeStatus_t this_status;
 	SteamNetConnectionRealTimeLaneStatus_t *lanes_array = new SteamNetConnectionRealTimeLaneStatus_t[lanes];
 	int result = SteamNetworkingSockets()->GetConnectionRealTimeStatus((HSteamNetConnection)connection, &this_status, lanes, lanes_array);
-	
+
 	real_time_status["response"] = result;
 	if (result == RESULT_OK) {
 
@@ -4330,7 +4350,7 @@ Dictionary Steam::getConnectionRealTimeStatus(uint32 connection, int lanes, bool
 // order.
 // Each lane has its own message number sequence.  The first message sent on each lane will be assigned the number 1.
 int Steam::configureConnectionLanes(uint32 connection, uint32 lanes, Array priorities, Array weights) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: configureConnectionLanes");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: configureConnectionLanes");
 	int *lane_priorities = new int[lanes];
 	for (uint32 i = 0; i < lanes; i++) {
 		lane_priorities[i] = priorities[i];
@@ -4350,7 +4370,7 @@ int Steam::configureConnectionLanes(uint32 connection, uint32 lanes, Array prior
 // these advanced functions.
 Dictionary Steam::getCertificateRequest() {
 	Dictionary cert_information;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, cert_information, "[STEAM] Networking Sockets class not found when calling: getCertificateRequest");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, cert_information, "[STEAM] Networking Sockets class not found when calling: getCertificateRequest");
 	PackedByteArray certificate;
 	certificate.resize(512);
 	int cert_size = certificate.size();
@@ -4366,7 +4386,7 @@ Dictionary Steam::getCertificateRequest() {
 // Set the certificate. The certificate blob should be the output of SteamDatagram_CreateCert.
 Dictionary Steam::setCertificate(const PackedByteArray &certificate) {
 	Dictionary certificate_data;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, certificate_data, "[STEAM] Networking Sockets class not found when calling: setCertificate");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, certificate_data, "[STEAM] Networking Sockets class not found when calling: setCertificate");
 	bool success = false;
 	SteamNetworkingErrMsg error_message;
 
@@ -4384,7 +4404,7 @@ Dictionary Steam::setCertificate(const PackedByteArray &certificate) {
 // NOTE: This function is not actually supported on Steam!  It is included for use on other platforms where the active user can
 // sign out and a new user can sign in.
 void Steam::resetIdentity(uint64_t remote_steam_id) {
-	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == NULL, "[STEAM] Networking Sockets class not found when calling: resetIdentity");
+	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == nullptr, "[STEAM] Networking Sockets class not found when calling: resetIdentity");
 	SteamNetworkingIdentity resetting_identity = getIdentityFromSteamID(remote_steam_id);
 	SteamNetworkingSockets()->ResetIdentity(&resetting_identity);
 }
@@ -4393,7 +4413,7 @@ void Steam::resetIdentity(uint64_t remote_steam_id) {
 // You don't need to call this if you are using Steam's callback dispatch mechanism (SteamAPI_RunCallbacks and
 // SteamGameserver_RunCallbacks).
 void Steam::runNetworkingCallbacks() {
-	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == NULL, "[STEAM] Networking Sockets class not found when calling: runNetworkingCallbacks");
+	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == nullptr, "[STEAM] Networking Sockets class not found when calling: runNetworkingCallbacks");
 	SteamNetworkingSockets()->RunCallbacks();
 }
 
@@ -4402,7 +4422,7 @@ void Steam::runNetworkingCallbacks() {
 // Returns false if a request was already in progress, true if a new request was started.
 // A SteamNetworkingFakeIPResult_t will be posted when the request completes.
 bool Steam::beginAsyncRequestFakeIP(int num_ports) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, false, "[STEAM] Networking Sockets class not found when calling: beginAsyncRequestFakeIP");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, false, "[STEAM] Networking Sockets class not found when calling: beginAsyncRequestFakeIP");
 	return SteamNetworkingSockets()->BeginAsyncRequestFakeIP(num_ports);
 }
 
@@ -4410,14 +4430,14 @@ bool Steam::beginAsyncRequestFakeIP(int num_ports) {
 // idxFirstPort is currently reserved and must be zero. Make sure and check SteamNetworkingFakeIPResult_t::m_eResult
 Dictionary Steam::getFakeIP(int first_port) {
 	Dictionary fake_ip;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, fake_ip, "[STEAM] Networking Sockets class not found when calling: getFakeIP");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, fake_ip, "[STEAM] Networking Sockets class not found when calling: getFakeIP");
 	SteamNetworkingFakeIPResult_t fake_ip_result;
 	SteamNetworkingSockets()->GetFakeIP(first_port, &fake_ip_result);
-	
+
 	fake_ip["result"] = fake_ip_result.m_eResult;
 	fake_ip["identity_type"] = fake_ip_result.m_identity.m_eType;
 	fake_ip["ip"] = getStringFromIP(fake_ip_result.m_unIP);
-		
+
 	PackedInt32Array ports;
 	ports.resize(SteamNetworkingFakeIPResult_t::k_nMaxReturnPorts);
 	for (size_t i = 0; i < SteamNetworkingFakeIPResult_t::k_nMaxReturnPorts; i++) {
@@ -4430,7 +4450,7 @@ Dictionary Steam::getFakeIP(int first_port) {
 // Create a listen socket that will listen for P2P connections sent to our FakeIP.
 // A peer can initiate connections to this listen socket by calling ConnectByIPAddress.
 uint32 Steam::createListenSocketP2PFakeIP(int fake_port, Dictionary config_options) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, 0, "[STEAM] Networking Sockets class not found when calling: createListenSocketP2PFakeIP");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, 0, "[STEAM] Networking Sockets class not found when calling: createListenSocketP2PFakeIP");
 	uint32 listen_socket = SteamNetworkingSockets()->CreateListenSocketP2PFakeIP(fake_port, config_options.size(), convert_config_options(config_options));
 	return listen_socket;
 }
@@ -4440,10 +4460,10 @@ uint32 Steam::createListenSocketP2PFakeIP(int fake_port, Dictionary config_optio
 // Otherwise, a FakeIP that is unique locally will be allocated from the local FakeIP address space, and that will be returned.
 Dictionary Steam::getRemoteFakeIPForConnection(uint32 connection) {
 	Dictionary this_fake_address;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == NULL, this_fake_address, "[STEAM] Networking Sockets class not found when calling: getRemoteFakeIPForConnection");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingSockets() == nullptr, this_fake_address, "[STEAM] Networking Sockets class not found when calling: getRemoteFakeIPForConnection");
 	SteamNetworkingIPAddr fake_address;
 	int result = SteamNetworkingSockets()->GetRemoteFakeIPForConnection((HSteamNetConnection)connection, &fake_address);
-	
+
 	this_fake_address["result"] = result;
 	this_fake_address["ip_address"] = getStringFromSteamIP(fake_address);
 	this_fake_address["port"] = fake_address.m_port;
@@ -4455,7 +4475,7 @@ Dictionary Steam::getRemoteFakeIPForConnection(uint32 connection) {
 // This is intended to make it easy to port existing UDP-based code to take advantage of SDR.
 // To create a "client" port (e.g. the equivalent of an ephemeral UDP port) pass -1.
 void Steam::createFakeUDPPort(int fake_server_port_index) {
-	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == NULL, "[STEAM] Networking Sockets class not found when calling: createFakeUDPPort");
+	ERR_FAIL_COND_MSG(SteamNetworkingSockets() == nullptr, "[STEAM] Networking Sockets class not found when calling: createFakeUDPPort");
 	SteamNetworkingSockets()->CreateFakeUDPPort(fake_server_port_index);
 }
 
@@ -4466,20 +4486,20 @@ void Steam::createFakeUDPPort(int fake_server_port_index) {
 // this to initialize the relay network. If you do not call this, the initialization will be delayed until the first time you use
 // a feature that requires access to the relay network, which will delay that first access.
 void Steam::initRelayNetworkAccess() {
-	ERR_FAIL_COND_MSG(SteamNetworkingUtils() == NULL, "[STEAM] Networking Utils class not found when calling: initRelayNetworkAccess");
+	ERR_FAIL_COND_MSG(SteamNetworkingUtils() == nullptr, "[STEAM] Networking Utils class not found when calling: initRelayNetworkAccess");
 	SteamNetworkingUtils()->InitRelayNetworkAccess();
 }
 
 // Fetch current status of the relay network.  If you want more details, you can pass a non-NULL value.
 NetworkingAvailability Steam::getRelayNetworkStatus() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, NETWORKING_AVAILABILITY_UNKNOWN, "[STEAM] Networking Utils class not found when calling: getRelayNetworkStatus");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, NETWORKING_AVAILABILITY_UNKNOWN, "[STEAM] Networking Utils class not found when calling: getRelayNetworkStatus");
 	return NetworkingAvailability(SteamNetworkingUtils()->GetRelayNetworkStatus(NULL));
 }
 
 // Return location info for the current host. Returns the approximate age of the data, in seconds, or -1 if no data is available.
 Dictionary Steam::getLocalPingLocation() {
 	Dictionary ping_location;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, ping_location, "[STEAM] Networking Utils class not found when calling: getLocalPingLocation");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, ping_location, "[STEAM] Networking Utils class not found when calling: getLocalPingLocation");
 	SteamNetworkPingLocation_t location;
 	float age = SteamNetworkingUtils()->GetLocalPingLocation(location);
 
@@ -4498,7 +4518,7 @@ Dictionary Steam::getLocalPingLocation() {
 // routing through the relay network. For most basic relayed connections, this ping time will be pretty accurate, since it will
 // be based on the route likely to be actually used.
 int Steam::estimatePingTimeBetweenTwoLocations(PackedByteArray location1, PackedByteArray location2) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, 0, "[STEAM] Networking Utils class not found when calling: estimatePingTimeBetweenTwoLocations");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, 0, "[STEAM] Networking Utils class not found when calling: estimatePingTimeBetweenTwoLocations");
 	SteamNetworkPingLocation_t ping_location1;
 	SteamNetworkPingLocation_t ping_location2;
 	uint8_t *input_location_1 = (uint8 *)location1.ptr();
@@ -4516,7 +4536,7 @@ int Steam::estimatePingTimeBetweenTwoLocations(PackedByteArray location1, Packed
 // Same as EstimatePingTime, but assumes that one location is the local host. This is a bit faster, especially if you need to
 // calculate a bunch of these in a loop to find the fastest one.
 int Steam::estimatePingTimeFromLocalHost(PackedByteArray location) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, 0, "[STEAM] Networking Utils class not found when calling: estimatePingTimeFromLocalHost");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, 0, "[STEAM] Networking Utils class not found when calling: estimatePingTimeFromLocalHost");
 	SteamNetworkPingLocation_t ping_location;
 	uint8_t *input_location = (uint8 *)location.ptr();
 	for (int j = 0; j < 512; j++) {
@@ -4530,7 +4550,7 @@ int Steam::estimatePingTimeFromLocalHost(PackedByteArray location) {
 // k_cchMaxSteamNetworkingPingLocationString bytes.
 String Steam::convertPingLocationToString(PackedByteArray location) {
 	String location_string = "";
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, location_string, "[STEAM] Networking Utils class not found when calling: convertPingLocationToString");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, location_string, "[STEAM] Networking Utils class not found when calling: convertPingLocationToString");
 	SteamNetworkPingLocation_t ping_location;
 	uint8_t *input_location = (uint8 *)location.ptr();
 	for (int j = 0; j < 512; j++) {
@@ -4546,10 +4566,10 @@ String Steam::convertPingLocationToString(PackedByteArray location) {
 // Parse back SteamNetworkPingLocation_t string. Returns false if we couldn't understand the string.
 Dictionary Steam::parsePingLocationString(const String &location_string) {
 	Dictionary parse_string;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, parse_string, "[STEAM] Networking Utils class not found when calling: parsePingLocationString");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, parse_string, "[STEAM] Networking Utils class not found when calling: parsePingLocationString");
 	SteamNetworkPingLocation_t result;
 	bool success = SteamNetworkingUtils()->ParsePingLocationString(location_string.utf8().get_data(), result);
-	
+
 	PackedByteArray data;
 	data.resize(512);
 	uint8_t *output_data = data.ptrw();
@@ -4563,14 +4583,14 @@ Dictionary Steam::parsePingLocationString(const String &location_string) {
 
 // Check if the ping data of sufficient recency is available, and if it's too old, start refreshing it.
 bool Steam::checkPingDataUpToDate(float max_age_in_seconds) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, false, "[STEAM] Networking Utils class not found when calling: checkPingDataUpToDate");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, false, "[STEAM] Networking Utils class not found when calling: checkPingDataUpToDate");
 	return SteamNetworkingUtils()->CheckPingDataUpToDate(max_age_in_seconds);
 }
 
 // Fetch ping time of best available relayed route from this host to the specified data center.
 Dictionary Steam::getPingToDataCenter(uint32 pop_id) {
 	Dictionary data_center_ping;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, data_center_ping, "[STEAM] Networking Utils class not found when calling: getPingToDataCenter");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, data_center_ping, "[STEAM] Networking Utils class not found when calling: getPingToDataCenter");
 	SteamNetworkingPOPID via_relay_pop;
 	int ping = SteamNetworkingUtils()->GetPingToDataCenter((SteamNetworkingPOPID)pop_id, &via_relay_pop);
 
@@ -4581,23 +4601,23 @@ Dictionary Steam::getPingToDataCenter(uint32 pop_id) {
 
 // Get *direct* ping time to the relays at the point of presence.
 int Steam::getDirectPingToPOP(uint32 pop_id) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, 0, "[STEAM] Networking Utils class not found when calling: getDirectPingToPOP");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, 0, "[STEAM] Networking Utils class not found when calling: getDirectPingToPOP");
 	return SteamNetworkingUtils()->GetDirectPingToPOP((SteamNetworkingPOPID)pop_id);
 }
 
 // Get number of network points of presence in the config
 int Steam::getPOPCount() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, 0, "[STEAM] Networking Utils class not found when calling: getPOPCount");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, 0, "[STEAM] Networking Utils class not found when calling: getPOPCount");
 	return SteamNetworkingUtils()->GetPOPCount();
 }
 
 // Get list of all POP IDs. Returns the number of entries that were filled into your list.
 Array Steam::getPOPList() {
 	Array pop_list;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, pop_list, "[STEAM] Networking Utils class not found when calling: getPOPList");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, pop_list, "[STEAM] Networking Utils class not found when calling: getPOPList");
 	SteamNetworkingPOPID list[256];
 	int pops = SteamNetworkingUtils()->GetPOPList(list, 256);
-	
+
 	for (int i = 0; i < pops; i++) {
 		int pop_id = list[i];
 		pop_list.append(pop_id);
@@ -4607,19 +4627,19 @@ Array Steam::getPOPList() {
 
 // Set a configuration value.
 //bool Steam::setConfigValue(NetworkingConfigValue setting, NetworkingConfigScope scope_type, uint32_t connection_handle, NetworkingConfigDataType data_type, auto value) {
-//	ERR_FAIL_COND_V_MSG(SteamGameServer() == NULL, false, "[STEAM] Networking Utils class not found when calling: setConfigValue");
+//	ERR_FAIL_COND_V_MSG(SteamGameServer() == nullptr, false, "[STEAM] Networking Utils class not found when calling: setConfigValue");
 //	return SteamNetworkingUtils()->SetConfigValue((ESteamNetworkingConfigValue)setting, (ESteamNetworkingConfigScope)scope_type, connection_handle, (ESteamNetworkingConfigDataType)data_type, value);
 //}
 
 // Get a configuration value.
 Dictionary Steam::getConfigValue(NetworkingConfigValue config_value, NetworkingConfigScope scope_type, uint32_t connection_handle) {
 	Dictionary config_info;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, config_info, "[STEAM] Networking Utils class not found when calling: getConfigValue");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, config_info, "[STEAM] Networking Utils class not found when calling: getConfigValue");
 	ESteamNetworkingConfigDataType data_type;
 	size_t buffer_size;
 	PackedByteArray config_result;
 	int result = SteamNetworkingUtils()->GetConfigValue((ESteamNetworkingConfigValue)config_value, (ESteamNetworkingConfigScope)scope_type, connection_handle, &data_type, &config_result, &buffer_size);
-	
+
 	config_info["result"] = result;
 	config_info["type"] = data_type;
 	config_info["value"] = config_result;
@@ -4630,7 +4650,7 @@ Dictionary Steam::getConfigValue(NetworkingConfigValue config_value, NetworkingC
 // Returns info about a configuration value.
 Dictionary Steam::getConfigValueInfo(NetworkingConfigValue config_value) {
 	Dictionary config_info;
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, config_info, "[STEAM] Networking Utils class not found when calling: getConfigValueInfo");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, config_info, "[STEAM] Networking Utils class not found when calling: getConfigValueInfo");
 	ESteamNetworkingConfigDataType data_type;
 	ESteamNetworkingConfigScope scope;
 	if (SteamNetworkingUtils()->GetConfigValueInfo((ESteamNetworkingConfigValue)config_value, &data_type, &scope)) {
@@ -4642,32 +4662,32 @@ Dictionary Steam::getConfigValueInfo(NetworkingConfigValue config_value) {
 
 // The following functions are handy shortcuts for common use cases.
 bool Steam::setGlobalConfigValueInt32(NetworkingConfigValue config, int32 value) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, false, "[STEAM] Networking Utils class not found when calling: setGlobalConfigValueInt32");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, false, "[STEAM] Networking Utils class not found when calling: setGlobalConfigValueInt32");
 	return SteamNetworkingUtils()->SetGlobalConfigValueInt32((ESteamNetworkingConfigValue)config, value);
 }
 
 bool Steam::setGlobalConfigValueFloat(NetworkingConfigValue config, float value) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, false, "[STEAM] Networking Utils class not found when calling: setGlobalConfigValueFloat");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, false, "[STEAM] Networking Utils class not found when calling: setGlobalConfigValueFloat");
 	return SteamNetworkingUtils()->SetGlobalConfigValueFloat((ESteamNetworkingConfigValue)config, value);
 }
 
 bool Steam::setGlobalConfigValueString(NetworkingConfigValue config, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, false, "[STEAM] Networking Utils class not found when calling: setGlobalConfigValueString");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, false, "[STEAM] Networking Utils class not found when calling: setGlobalConfigValueString");
 	return SteamNetworkingUtils()->SetGlobalConfigValueString((ESteamNetworkingConfigValue)config, value.utf8().get_data());
 }
 
 bool Steam::setConnectionConfigValueInt32(uint32 connection, NetworkingConfigValue config, int32 value) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, false, "[STEAM] Networking Utils class not found when calling: setConnectionConfigValueInt32");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, false, "[STEAM] Networking Utils class not found when calling: setConnectionConfigValueInt32");
 	return SteamNetworkingUtils()->SetConnectionConfigValueInt32(connection, (ESteamNetworkingConfigValue)config, value);
 }
 
 bool Steam::setConnectionConfigValueFloat(uint32 connection, NetworkingConfigValue config, float value) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, false, "[STEAM] Networking Utils class not found when calling: setConnectionConfigValueFloat");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, false, "[STEAM] Networking Utils class not found when calling: setConnectionConfigValueFloat");
 	return SteamNetworkingUtils()->SetConnectionConfigValueFloat(connection, (ESteamNetworkingConfigValue)config, value);
 }
 
 bool Steam::setConnectionConfigValueString(uint32 connection, NetworkingConfigValue config, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, false, "[STEAM] Networking Utils class not found when calling: setConnectionConfigValueString");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, false, "[STEAM] Networking Utils class not found when calling: setConnectionConfigValueString");
 	return SteamNetworkingUtils()->SetConnectionConfigValueString(connection, (ESteamNetworkingConfigValue)config, value.utf8().get_data());
 }
 
@@ -4675,7 +4695,7 @@ bool Steam::setConnectionConfigValueString(uint32 connection, NetworkingConfigVa
 // be at least 24*3600*30*1e6, i.e. about 30 days worth of microseconds. In this way, the timestamp value of 0 will always be at
 // least "30 days ago". Also, negative numbers will never be returned. Wraparound / overflow is not a practical concern.
 uint64_t Steam::getLocalTimestamp() {
-	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == NULL, 0, "[STEAM] Networking Utils class not found when calling: getLocalTimestamp");
+	ERR_FAIL_COND_V_MSG(SteamNetworkingUtils() == nullptr, 0, "[STEAM] Networking Utils class not found when calling: getLocalTimestamp");
 	return SteamNetworkingUtils()->GetLocalTimestamp();
 }
 
@@ -4684,32 +4704,32 @@ uint64_t Steam::getLocalTimestamp() {
 
 // There are no notes about these functions, names can assume functionality.
 bool Steam::isAppBlocked(uint32 app_id) {
-	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == NULL, false, "[STEAM] Parental Settings class not found when calling: isAppBlocked");
+	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == nullptr, false, "[STEAM] Parental Settings class not found when calling: isAppBlocked");
 	return SteamParentalSettings()->BIsAppBlocked((AppId_t)app_id);
 }
 
 bool Steam::isAppInBlockList(uint32 app_id) {
-	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == NULL, false, "[STEAM] Parental Settings class not found when calling: isAppInBlockList");
+	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == nullptr, false, "[STEAM] Parental Settings class not found when calling: isAppInBlockList");
 	return SteamParentalSettings()->BIsAppInBlockList((AppId_t)app_id);
 }
 
 bool Steam::isFeatureBlocked(ParentalFeature feature) {
-	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == NULL, false, "[STEAM] Parental Settings class not found when calling: isFeatureBlocked");
+	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == nullptr, false, "[STEAM] Parental Settings class not found when calling: isFeatureBlocked");
 	return SteamParentalSettings()->BIsFeatureBlocked((EParentalFeature)feature);
 }
 
 bool Steam::isFeatureInBlockList(ParentalFeature feature) {
-	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == NULL, false, "[STEAM] Parental Settings class not found when calling: isFeatureInBlockList");
+	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == nullptr, false, "[STEAM] Parental Settings class not found when calling: isFeatureInBlockList");
 	return SteamParentalSettings()->BIsFeatureInBlockList((EParentalFeature)feature);
 }
 
 bool Steam::isParentalLockEnabled() {
-	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == NULL, false, "[STEAM] Parental Settings class not found when calling: isParentalLockEnabled");
+	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == nullptr, false, "[STEAM] Parental Settings class not found when calling: isParentalLockEnabled");
 	return SteamParentalSettings()->BIsParentalLockEnabled();
 }
 
 bool Steam::isParentalLockLocked() {
-	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == NULL, false, "[STEAM] Parental Settings class not found when calling: isParentalLockLocked");
+	ERR_FAIL_COND_V_MSG(SteamParentalSettings() == nullptr, false, "[STEAM] Parental Settings class not found when calling: isParentalLockLocked");
 	return SteamParentalSettings()->BIsParentalLockLocked();
 }
 
@@ -4719,7 +4739,7 @@ bool Steam::isParentalLockLocked() {
 // To cancel a reservation (due to timeout or user input), call this. Steam will open a new reservation slot. Note: The user may
 // already be in-flight to your game, so it's possible they will still connect and try to join your party.
 void Steam::cancelReservation(uint64_t beacon_id, uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamParties() == NULL, "[STEAM] Parties class not found when calling: cancelReservation");
+	ERR_FAIL_COND_MSG(SteamParties() == nullptr, "[STEAM] Parties class not found when calling: cancelReservation");
 	CSteamID user_id = (uint64)steam_id;
 	SteamParties()->CancelReservation(beacon_id, user_id);
 }
@@ -4730,7 +4750,7 @@ void Steam::cancelReservation(uint64_t beacon_id, uint64_t steam_id) {
 // you would want to call ChangeNumOpenSlots with a value of 2 for unOpenSlots. That value represents the total number of new users
 // that you would like Steam to send to your party.
 void Steam::changeNumOpenSlots(uint64_t beacon_id, uint32 open_slots) {
-	ERR_FAIL_COND_MSG(SteamParties() == NULL, "[STEAM] Parties class not found when calling: changeNumOpenSlots");
+	ERR_FAIL_COND_MSG(SteamParties() == nullptr, "[STEAM] Parties class not found when calling: changeNumOpenSlots");
 	SteamAPICall_t api_call = SteamParties()->ChangeNumOpenSlots(beacon_id, open_slots);
 	callResultChangeNumOpenSlots.Set(api_call, this, &Steam::change_num_open_slots);
 }
@@ -4738,7 +4758,7 @@ void Steam::changeNumOpenSlots(uint64_t beacon_id, uint32 open_slots) {
 // Create a beacon. You can only create one beacon at a time. Steam will display the beacon in the specified location, and let up
 // to unOpenSlots users "follow" the beacon to your party.
 void Steam::createBeacon(uint32 open_slots, uint64_t location, PartyBeaconLocationType type, const String &connect_string, const String &beacon_metadata) {
-	ERR_FAIL_COND_MSG(SteamParties() == NULL, "[STEAM] Parties class not found when calling: createBeacon");
+	ERR_FAIL_COND_MSG(SteamParties() == nullptr, "[STEAM] Parties class not found when calling: createBeacon");
 	SteamPartyBeaconLocation_t beacon_data;
 	beacon_data.m_eType = (ESteamPartyBeaconLocationType)type;
 	beacon_data.m_ulLocationID = location;
@@ -4749,14 +4769,14 @@ void Steam::createBeacon(uint32 open_slots, uint64_t location, PartyBeaconLocati
 // Call this method to destroy the Steam party beacon. This will immediately cause Steam to stop showing the beacon in the target
 // location. Note that any users currently in-flight may still arrive at your party expecting to join.
 bool Steam::destroyBeacon(uint64_t beacon_id) {
-	ERR_FAIL_COND_V_MSG(SteamParties() == NULL, false, "[STEAM] Parties class not found when calling: destroyBeacon");
+	ERR_FAIL_COND_V_MSG(SteamParties() == nullptr, false, "[STEAM] Parties class not found when calling: destroyBeacon");
 	return SteamParties()->DestroyBeacon(beacon_id);
 }
 
 // Get the list of locations in which you can post a party beacon.
 Array Steam::getAvailableBeaconLocations(uint32 max) {
 	Array beacon_locations;
-	ERR_FAIL_COND_V_MSG(SteamParties() == NULL, beacon_locations, "[STEAM] Parties class not found when calling: getAvailableBeaconLocations");
+	ERR_FAIL_COND_V_MSG(SteamParties() == nullptr, beacon_locations, "[STEAM] Parties class not found when calling: getAvailableBeaconLocations");
 	uint32 locations = 0;
 	SteamPartyBeaconLocation_t beacons[256];
 	if (SteamParties()->GetNumAvailableBeaconLocations(&locations)) {
@@ -4781,7 +4801,7 @@ Array Steam::getAvailableBeaconLocations(uint32 max) {
 // index, so iterate over the range [0, GetNumActiveBeacons() - 1]. The return is a PartyBeaconID_t that can be used with
 // getBeaconDetails to get information about the beacons suitable for display to the user.
 uint64_t Steam::getBeaconByIndex(uint32 index) {
-	ERR_FAIL_COND_V_MSG(SteamParties() == NULL, 0, "[STEAM] Parties class not found when calling: getBeaconByIndex");
+	ERR_FAIL_COND_V_MSG(SteamParties() == nullptr, 0, "[STEAM] Parties class not found when calling: getBeaconByIndex");
 	return SteamParties()->GetBeaconByIndex(index);
 }
 
@@ -4790,7 +4810,7 @@ uint64_t Steam::getBeaconByIndex(uint32 index) {
 // whatever was set (if anything) by the game process that created the beacon.
 Dictionary Steam::getBeaconDetails(uint64_t beacon_id) {
 	Dictionary details;
-	ERR_FAIL_COND_V_MSG(SteamParties() == NULL, details, "[STEAM] Parties class not found when calling: getBeaconDetails");
+	ERR_FAIL_COND_V_MSG(SteamParties() == nullptr, details, "[STEAM] Parties class not found when calling: getBeaconDetails");
 	CSteamID owner;
 	SteamPartyBeaconLocation_t location;
 	char beacon_metadata[STEAM_LARGE_BUFFER_SIZE];
@@ -4808,7 +4828,7 @@ Dictionary Steam::getBeaconDetails(uint64_t beacon_id) {
 // supports icons (for example, the icon for a Steam Chat Room Group).
 String Steam::getBeaconLocationData(uint64_t location_id, PartyBeaconLocationType location_type, PartyBeaconLocationData location_data) {
 	String beacon_location_data = "";
-	ERR_FAIL_COND_V_MSG(SteamParties() == NULL, beacon_location_data, "[STEAM] Parties class not found when calling: getBeaconLocationData");
+	ERR_FAIL_COND_V_MSG(SteamParties() == nullptr, beacon_location_data, "[STEAM] Parties class not found when calling: getBeaconLocationData");
 	char beacon_data[2048 + 1]{};
 	SteamPartyBeaconLocation_t beacon;
 	beacon.m_eType = (ESteamPartyBeaconLocationType)location_type;
@@ -4821,14 +4841,14 @@ String Steam::getBeaconLocationData(uint64_t location_id, PartyBeaconLocationTyp
 
 // Get the number of active party beacons created by other users for your game, that are visible to the current user.
 uint32 Steam::getNumActiveBeacons() {
-	ERR_FAIL_COND_V_MSG(SteamParties() == NULL, 0, "[STEAM] Parties class not found when calling: getNumActiveBeacons");
+	ERR_FAIL_COND_V_MSG(SteamParties() == nullptr, 0, "[STEAM] Parties class not found when calling: getNumActiveBeacons");
 	return SteamParties()->GetNumActiveBeacons();
 }
 
 // When the user indicates they wish to join the party advertised by a given beacon, call this method. On success, Steam will
 // reserve a slot for this user in the party and return the necessary "join game" string to use to complete the connection.
 void Steam::joinParty(uint64_t beacon_id) {
-	ERR_FAIL_COND_MSG(SteamParties() == NULL, "[STEAM] Parties class not found when calling: joinParty");
+	ERR_FAIL_COND_MSG(SteamParties() == nullptr, "[STEAM] Parties class not found when calling: joinParty");
 	SteamAPICall_t api_call = SteamParties()->JoinParty(beacon_id);
 	callResultJoinParty.Set(api_call, this, &Steam::join_party);
 }
@@ -4837,7 +4857,7 @@ void Steam::joinParty(uint64_t beacon_id) {
 // ReservationNotificationCallback_t callback. When that user joins your party, call OnReservationCompleted to notify Steam that
 // the user has joined successfully.
 void Steam::onReservationCompleted(uint64_t beacon_id, uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamParties() == NULL, "[STEAM] Parties class not found when calling: onReservationCompleted");
+	ERR_FAIL_COND_MSG(SteamParties() == nullptr, "[STEAM] Parties class not found when calling: onReservationCompleted");
 	CSteamID user_id = (uint64)steam_id;
 	SteamParties()->OnReservationCompleted(beacon_id, user_id);
 }
@@ -4852,12 +4872,12 @@ void Steam::onReservationCompleted(uint64_t beacon_id, uint64_t steam_id) {
 // height - The height of the cursor, in pixels
 // hot_x - The X coordinate of the cursor hot spot in pixels, offset from the left of the cursor
 // hot_y - The Y coordinate of the cursor hot spot in pixels, offset from the top of the cursor
-// pitch - The distance between pixel rows in bytes, defaults to nWidth * 4 
+// pitch - The distance between pixel rows in bytes, defaults to nWidth * 4
 Dictionary Steam::createMouseCursor(int width, int height, int hot_x, int hot_y, int pitch) {
 	Dictionary mouse_cursor;
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, mouse_cursor, "[STEAM] Remote Play class not found when calling: createMouseCursor");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, mouse_cursor, "[STEAM] Remote Play class not found when calling: createMouseCursor");
 	const void *cursor_pixels = nullptr;
-	uint32_t mouse_cursor_id = SteamRemotePlay()->CreateMouseCursor(width, height, hot_x, hot_y, &cursor_pixels, pitch); 
+	uint32_t mouse_cursor_id = SteamRemotePlay()->CreateMouseCursor(width, height, hot_x, hot_y, &cursor_pixels, pitch);
 	mouse_cursor["id"] = mouse_cursor_id;
 
 	unsigned int pixel_count = width * height;
@@ -4865,7 +4885,7 @@ Dictionary Steam::createMouseCursor(int width, int height, int hot_x, int hot_y,
 	rgba_data.resize(pixel_count * 4);
 	const uint8_t *bgra = (const uint8_t *)cursor_pixels;
 	uint8_t *rgba = rgba_data.ptrw();
-	
+
 	// Loop to swap B and R channels for the image
 	for (unsigned int i = 0; i < pixel_count; i++) {
 		rgba[i * 4 + 0] = bgra[i * 4 + 2]; // R = B
@@ -4879,13 +4899,13 @@ Dictionary Steam::createMouseCursor(int width, int height, int hot_x, int hot_y,
 
 // Make mouse and keyboard input for Remote Play Together sessions available via GetInput() instead of being merged with local input
 bool Steam::enableRemotePlayTogetherDirectInput() {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, 0, "[STEAM] Remote Play class not found when calling: enableRemotePlayTogetherDirectInput");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, 0, "[STEAM] Remote Play class not found when calling: enableRemotePlayTogetherDirectInput");
 	return SteamRemotePlay()->BEnableRemotePlayTogetherDirectInput();
 }
 
 // Merge Remote Play Together mouse and keyboard input with local input
 void Steam::disableRemotePlayTogetherDirectInput() {
-	ERR_FAIL_COND_MSG(SteamRemotePlay() == NULL, "[STEAM] Remote Play class not found when calling: disableRemotePlayTogetherDirectInput");
+	ERR_FAIL_COND_MSG(SteamRemotePlay() == nullptr, "[STEAM] Remote Play class not found when calling: disableRemotePlayTogetherDirectInput");
 	return SteamRemotePlay()->DisableRemotePlayTogetherDirectInput();
 }
 
@@ -4895,7 +4915,7 @@ void Steam::disableRemotePlayTogetherDirectInput() {
 // This returns the number of events copied to remote_inputs, or the number of events available if remote_inputs is nullptr.
 Array Steam::getInput(uint32_t max_events) {
 	Array remote_inputs;
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, remote_inputs, "[STEAM] Remote Play class not found when calling: getInput");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, remote_inputs, "[STEAM] Remote Play class not found when calling: getInput");
 
 	RemotePlayInput_t *these_remote_inputs = nullptr;
 	uint32_t returned_inputs = SteamRemotePlay()->GetInput(these_remote_inputs, max_events);
@@ -4939,39 +4959,39 @@ Array Steam::getInput(uint32_t max_events) {
 
 // Get the number of currently connected Steam Remote Play sessions.
 uint32 Steam::getSessionCount() {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, 0, "[STEAM] Remote Play class not found when calling: getSessionCount");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, 0, "[STEAM] Remote Play class not found when calling: getSessionCount");
 	return SteamRemotePlay()->GetSessionCount();
 }
 
 // Get the currently connected Steam Remote Play session ID at the specified index.
 uint32 Steam::getSessionID(uint32 index) {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, 0, "[STEAM] Remote Play class not found when calling: getSessionID");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, 0, "[STEAM] Remote Play class not found when calling: getSessionID");
 	return SteamRemotePlay()->GetSessionID(index);
 }
 
 // Get the SteamID of the connected user.
 uint64_t Steam::getSessionSteamID(uint32 session_id) {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, 0, "[STEAM] Remote Play class not found when calling: getSessionSteamID");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, 0, "[STEAM] Remote Play class not found when calling: getSessionSteamID");
 	CSteamID steam_id = SteamRemotePlay()->GetSessionSteamID(session_id);
 	return steam_id.ConvertToUint64();
 }
 
 // Get the name of the session client device.
 String Steam::getSessionClientName(uint32 session_id) {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, "", "[STEAM] Remote Play class not found when calling: getSessionClientName");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, "", "[STEAM] Remote Play class not found when calling: getSessionClientName");
 	return SteamRemotePlay()->GetSessionClientName(session_id);
 }
 
 // Get the form factor of the session client device.
 int Steam::getSessionClientFormFactor(uint32 session_id) {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, 0, "[STEAM] Remote Play class not found when calling: getSessionClientFormFactor");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, 0, "[STEAM] Remote Play class not found when calling: getSessionClientFormFactor");
 	return SteamRemotePlay()->GetSessionClientFormFactor(session_id);
 }
 
 // Get the resolution, in pixels, of the session client device. This is set to 0x0 if the resolution is not available.
 Dictionary Steam::getSessionClientResolution(uint32 session_id) {
 	Dictionary resolution;
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, resolution, "[STEAM] Remote Play class not found when calling: getSessionClientResolution");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, resolution, "[STEAM] Remote Play class not found when calling: getSessionClientResolution");
 	int resolutionX = 0;
 	int resolutionY = 0;
 
@@ -4986,7 +5006,7 @@ Dictionary Steam::getSessionClientResolution(uint32 session_id) {
 
 // Invite a friend to join the game using Remote Play Together
 bool Steam::sendRemotePlayTogetherInvite(uint64_t friend_id) {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, false, "[STEAM] Remote Play class not found when calling: sendRemotePlayTogetherInvite");
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, false, "[STEAM] Remote Play class not found when calling: sendRemotePlayTogetherInvite");
 	CSteamID steam_id = (uint64)friend_id;
 	return SteamRemotePlay()->BSendRemotePlayTogetherInvite(steam_id);
 }
@@ -4995,7 +5015,7 @@ bool Steam::sendRemotePlayTogetherInvite(uint64_t friend_id) {
 // This is available after calling enableRemotePlayTogetherDirectInput()
 // The cursor ID is a value returned by createMouseCursor()
 void Steam::setMouseCursor(uint32 session_id, uint32 cursor_id) {
-	ERR_FAIL_COND_MSG(SteamRemotePlay() == NULL, "[STEAM] Remote Play class not found when calling: setMouseCursor");
+	ERR_FAIL_COND_MSG(SteamRemotePlay() == nullptr, "[STEAM] Remote Play class not found when calling: setMouseCursor");
 	SteamRemotePlay()->SetMouseCursor(session_id, cursor_id);
 }
 
@@ -5004,22 +5024,22 @@ void Steam::setMouseCursor(uint32 session_id, uint32 cursor_id) {
 // This is used to warp the cursor to a specific location and isn't needed during normal event processing.
 // The position is normalized relative to the window, where 0,0 is the upper left, and 1,1 is the lower right.
 void Steam::setMousePosition(uint32 session_id, float normalized_x, float normalized_y) {
-	ERR_FAIL_COND_MSG(SteamRemotePlay() == NULL, "[STEAM] Remote Play class not found when calling: setMousePosition");
+	ERR_FAIL_COND_MSG(SteamRemotePlay() == nullptr, "[STEAM] Remote Play class not found when calling: setMousePosition");
 	SteamRemotePlay()->SetMousePosition(session_id, normalized_x, normalized_y);
 }
 
 // Set the mouse cursor visibility for a remote player
 // This is available after calling BEnableRemotePlayTogetherDirectInput()
 void Steam::setMouseVisibility(uint32 session_id, bool visible) {
-	ERR_FAIL_COND_MSG(SteamRemotePlay() == NULL, "[STEAM] Remote Play class not found when calling: setMouseVisibility");
+	ERR_FAIL_COND_MSG(SteamRemotePlay() == nullptr, "[STEAM] Remote Play class not found when calling: setMouseVisibility");
 	SteamRemotePlay()->SetMouseVisibility(session_id, visible);
 }
 
 // Show the Remote Play Together UI in the game overlay.
 // This returns false if your game is not configured for Remote Play Together.
 bool Steam::showRemotePlayTogetherUI() {
-	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == NULL, false, "[STEAM] Remote Play class not found when calling: showRemotePlayTogetherUI");
-	return SteamRemotePlay()->ShowRemotePlayTogetherUI();	
+	ERR_FAIL_COND_V_MSG(SteamRemotePlay() == nullptr, false, "[STEAM] Remote Play class not found when calling: showRemotePlayTogetherUI");
+	return SteamRemotePlay()->ShowRemotePlayTogetherUI();
 }
 
 
@@ -5028,38 +5048,38 @@ bool Steam::showRemotePlayTogetherUI() {
 // Indicate to Steam the beginning / end of a set of local file operations - for example, writing a game save that requires
 // updating two files.
 bool Steam::beginFileWriteBatch() {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: beginFileWriteBatch");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: beginFileWriteBatch");
 	return SteamRemoteStorage()->BeginFileWriteBatch();
 }
 
 // Indicate to Steam the beginning / end of a set of local file operations - for example, writing a game save that requires
 // updating two files.
 bool Steam::endFileWriteBatch() {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: endFileWriteBatch");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: endFileWriteBatch");
 	return SteamRemoteStorage()->EndFileWriteBatch();
 }
 
 // Delete a given file in Steam Cloud.
 bool Steam::fileDelete(const String &file) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: fileDelete");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: fileDelete");
 	return SteamRemoteStorage()->FileDelete(file.utf8().get_data());
 }
 
 // Check if a given file exists in Steam Cloud.
 bool Steam::fileExists(const String &file) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: fileExists");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: fileExists");
 	return SteamRemoteStorage()->FileExists(file.utf8().get_data());
 }
 
 // Delete file from remote storage but leave it on local disk to remain accessible.
 bool Steam::fileForget(const String &file) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: fileForget");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: fileForget");
 	return SteamRemoteStorage()->FileForget(file.utf8().get_data());
 }
 
 // Check if a given file is persisted in Steam Cloud.
 bool Steam::filePersisted(const String &file) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: filePersisted");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: filePersisted");
 	return SteamRemoteStorage()->FilePersisted(file.utf8().get_data());
 }
 
@@ -5067,7 +5087,7 @@ bool Steam::filePersisted(const String &file) {
 Dictionary Steam::fileRead(const String &file, int32_t data_to_read) {
 	Dictionary file_data;
 	file_data["ret"] = false;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, file_data, "[STEAM] Remote Storage class not found when calling: fileRead");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, file_data, "[STEAM] Remote Storage class not found when calling: fileRead");
 	PackedByteArray data;
 	data.resize(data_to_read);
 	file_data["ret"] = SteamRemoteStorage()->FileRead(file.utf8().get_data(), data.ptrw(), data_to_read);
@@ -5078,21 +5098,21 @@ Dictionary Steam::fileRead(const String &file, int32_t data_to_read) {
 // Starts an asynchronous read from a file. The offset and amount to read should be valid for the size of the file, as indicated by
 // GetFileSize or GetFileTimestamp.
 void Steam::fileReadAsync(const String &file, uint32 offset, uint32_t data_to_read) {
-	ERR_FAIL_COND_MSG(SteamRemoteStorage() == NULL, "[STEAM] Remote Storage class not found when calling: fileReadAsync");
+	ERR_FAIL_COND_MSG(SteamRemoteStorage() == nullptr, "[STEAM] Remote Storage class not found when calling: fileReadAsync");
 	SteamAPICall_t api_call = SteamRemoteStorage()->FileReadAsync(file.utf8().get_data(), offset, data_to_read);
 	callResultFileReadAsyncComplete.Set(api_call, this, &Steam::file_read_async_complete);
 }
 
 // Share a file.
 void Steam::fileShare(const String &file) {
-	ERR_FAIL_COND_MSG(SteamRemoteStorage() == NULL, "[STEAM] Remote Storage class not found when calling: fileShare");
+	ERR_FAIL_COND_MSG(SteamRemoteStorage() == nullptr, "[STEAM] Remote Storage class not found when calling: fileShare");
 	SteamAPICall_t api_call = SteamRemoteStorage()->FileShare(file.utf8().get_data());
 	callResultFileShareResult.Set(api_call, this, &Steam::file_share_result);
 }
 
 // Write to given file from Steam Cloud.
 bool Steam::fileWrite(const String &file, PackedByteArray data, int32 size) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: fileWrite");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: fileWrite");
 	int32 data_size = data.size();
 	if (size > 0) {
 		data_size = size;
@@ -5103,7 +5123,7 @@ bool Steam::fileWrite(const String &file, PackedByteArray data, int32 size) {
 // Creates a new file and asynchronously writes the raw byte data to the Steam Cloud, and then closes the file. If the target file
 // already exists, it is overwritten.
 void Steam::fileWriteAsync(const String &file, PackedByteArray data, int32 size) {
-	ERR_FAIL_COND_MSG(SteamRemoteStorage() == NULL, "[STEAM] Remote Storage class not found when calling: fileWriteAsync");
+	ERR_FAIL_COND_MSG(SteamRemoteStorage() == nullptr, "[STEAM] Remote Storage class not found when calling: fileWriteAsync");
 	int32 data_size = data.size();
 	if (size > 0) {
 		data_size = size;
@@ -5115,14 +5135,14 @@ void Steam::fileWriteAsync(const String &file, PackedByteArray data, int32 size)
 // Cancels a file write stream that was started by FileWriteStreamOpen.  This trashes all of the data written and closes the write
 // stream, but if there was an existing file with this name, it remains untouched.
 bool Steam::fileWriteStreamCancel(uint64_t write_handle) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: fileWriteStreamCancel");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: fileWriteStreamCancel");
 	return SteamRemoteStorage()->FileWriteStreamCancel((UGCFileWriteStreamHandle_t)write_handle);
 }
 
 // Closes a file write stream that was started by FileWriteStreamOpen. This flushes the stream to the disk, overwriting the
 // existing file if there was one.
 bool Steam::fileWriteStreamClose(uint64_t write_handle) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: fileWriteStreamClose");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: fileWriteStreamClose");
 	return SteamRemoteStorage()->FileWriteStreamClose((UGCFileWriteStreamHandle_t)write_handle);
 }
 
@@ -5130,38 +5150,38 @@ bool Steam::fileWriteStreamClose(uint64_t write_handle) {
 // exists, it is not overwritten until FileWriteStreamClose has been called. To write data out to this stream you can use
 // FileWriteStreamWriteChunk, and then to close or cancel you use FileWriteStreamClose and FileWriteStreamCancel respectively.
 uint64_t Steam::fileWriteStreamOpen(const String &file) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, 0, "[STEAM] Remote Storage class not found when calling: fileWriteStreamOpen");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, 0, "[STEAM] Remote Storage class not found when calling: fileWriteStreamOpen");
 	return SteamRemoteStorage()->FileWriteStreamOpen(file.utf8().get_data());
 }
 
 // Writes a blob of data to the file write stream.
 bool Steam::fileWriteStreamWriteChunk(uint64_t write_handle, PackedByteArray data) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: fileWriteStreamWriteChunk");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: fileWriteStreamWriteChunk");
 	return SteamRemoteStorage()->FileWriteStreamWriteChunk((UGCFileWriteStreamHandle_t)write_handle, data.ptr(), data.size());
 }
 
 // Gets the number of cached UGC.
 int32 Steam::getCachedUGCCount() {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, 0, "[STEAM] Remote Storage class not found when calling: getCachedUGCCount");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, 0, "[STEAM] Remote Storage class not found when calling: getCachedUGCCount");
 	return SteamRemoteStorage()->GetCachedUGCCount();
 }
 
 // Gets the cached UGC's handle.
 uint64_t Steam::getCachedUGCHandle(int32 content) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, 0, "[STEAM] Remote Storage class not found when calling: getCachedUGCHandle");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, 0, "[STEAM] Remote Storage class not found when calling: getCachedUGCHandle");
 	return SteamRemoteStorage()->GetCachedUGCHandle(content);
 }
 
 // Gets the total number of local files synchronized by Steam Cloud.
 int32_t Steam::getFileCount() {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, 0, "[STEAM] Remote Storage class not found when calling: getFileCount");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, 0, "[STEAM] Remote Storage class not found when calling: getFileCount");
 	return SteamRemoteStorage()->GetFileCount();
 }
 
 // Gets the file name and size of a file from the index.
 Dictionary Steam::getFileNameAndSize(int file) {
 	Dictionary file_data;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, file_data, "[STEAM] Remote Storage class not found when calling: getFileNameAndSize");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, file_data, "[STEAM] Remote Storage class not found when calling: getFileNameAndSize");
 	int32_t size = 0;
 	file_data["name"] = String(SteamRemoteStorage()->GetFileNameAndSize(file, &size));
 	file_data["size"] = size;
@@ -5170,24 +5190,24 @@ Dictionary Steam::getFileNameAndSize(int file) {
 
 // Get the size of a given file.
 int32_t Steam::getFileSize(const String &file) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, -1, "[STEAM] Remote Storage class not found when calling: getFileSize");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, -1, "[STEAM] Remote Storage class not found when calling: getFileSize");
 	return SteamRemoteStorage()->GetFileSize(file.utf8().get_data());
 }
 
 // Get the timestamp of when the file was uploaded/changed.
 int64_t Steam::getFileTimestamp(const String &file) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, -1, "[STEAM] Remote Storage class not found when calling: getFileTimestamp");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, -1, "[STEAM] Remote Storage class not found when calling: getFileTimestamp");
 	return SteamRemoteStorage()->GetFileTimestamp(file.utf8().get_data());
 }
 
 // Cloud dynamic state change notification, for iteration with getLocalFileChangeCount
 Dictionary Steam::getLocalFileChange(int file) {
 	Dictionary file_change;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, file_change, "[STEAM] Remote Storage class not found when calling: getLocalFileChange");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, file_change, "[STEAM] Remote Storage class not found when calling: getLocalFileChange");
 	ERemoteStorageLocalFileChange change_type;
 	ERemoteStorageFilePathType file_path_type;
 	String changed_file = SteamRemoteStorage()->GetLocalFileChange(file, &change_type, &file_path_type);
-	
+
 	file_change["file"] = changed_file;
 	file_change["change_type"] = change_type;
 	file_change["path_type"] = file_path_type;
@@ -5196,14 +5216,14 @@ Dictionary Steam::getLocalFileChange(int file) {
 
 // Cloud dynamic state change notification, used to get the total number of files changed; paired with getLocalFileChange
 uint32_t Steam::getLocalFileChangeCount() {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, 0, "[STEAM] Remote Storage class not found when calling: getLocalFileChangeCount");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, 0, "[STEAM] Remote Storage class not found when calling: getLocalFileChangeCount");
 	return SteamRemoteStorage()->GetLocalFileChangeCount();
 }
 
 // Gets the number of bytes available, and used on the users Steam Cloud storage.
 Dictionary Steam::getQuota() {
 	Dictionary quota_data;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, quota_data, "[STEAM] Remote Storage class not found when calling: getFileNameAndSize");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, quota_data, "[STEAM] Remote Storage class not found when calling: getFileNameAndSize");
 	uint64_t total = 0;
 	uint64_t available = 0;
 	SteamRemoteStorage()->GetQuota((uint64 *)&total, (uint64 *)&available);
@@ -5216,7 +5236,7 @@ Dictionary Steam::getQuota() {
 // Obtains the platforms that the specified file will syncronize to.
 Dictionary Steam::getSyncPlatforms(const String &file) {
 	Dictionary platforms;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, platforms, "[STEAM] Remote Storage class not found when calling: getSyncPlatforms");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, platforms, "[STEAM] Remote Storage class not found when calling: getSyncPlatforms");
 	uint32_t platform = SteamRemoteStorage()->GetSyncPlatforms(file.utf8().get_data());
 
 	platforms["bitwise"] = platform;
@@ -5248,7 +5268,7 @@ Dictionary Steam::getSyncPlatforms(const String &file) {
 // call result.
 Dictionary Steam::getUGCDetails(uint64_t content) {
 	Dictionary ugc_details;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, ugc_details, "[STEAM] Remote Storage class not found when calling: getUGCDetails");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, ugc_details, "[STEAM] Remote Storage class not found when calling: getUGCDetails");
 	AppId_t app_id;
 	char *filename;
 	int32 file_size;
@@ -5267,7 +5287,7 @@ Dictionary Steam::getUGCDetails(uint64_t content) {
 // transfer hasn't started yet, so be careful to check for that before dividing to get a percentage.
 Dictionary Steam::getUGCDownloadProgress(uint64_t content) {
 	Dictionary ugc_download_progress;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, ugc_download_progress, "[STEAM] Remote Storage class not found when calling: getUGCDownloadProgress");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, ugc_download_progress, "[STEAM] Remote Storage class not found when calling: getUGCDownloadProgress");
 	int32 bytes_downloaded;
 	int32 bytes_expected;
 	if (SteamRemoteStorage()->GetUGCDownloadProgress((UGCHandle_t)content, &bytes_downloaded, &bytes_expected)) {
@@ -5279,40 +5299,40 @@ Dictionary Steam::getUGCDownloadProgress(uint64_t content) {
 
 // Is Steam Cloud enabled on the user's account?
 bool Steam::isCloudEnabledForAccount() {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: isCloudEnabledForAccount");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: isCloudEnabledForAccount");
 	return SteamRemoteStorage()->IsCloudEnabledForAccount();
 }
 
 // Is Steam Cloud enabled for this application?
 bool Steam::isCloudEnabledForApp() {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: isCloudEnabledForApp");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: isCloudEnabledForApp");
 	return SteamRemoteStorage()->IsCloudEnabledForApp();
 }
 
 // Set Steam Cloud enabled for this application.
 void Steam::setCloudEnabledForApp(bool enabled) {
-	ERR_FAIL_COND_MSG(SteamRemoteStorage() == NULL, "[STEAM] Remote Storage class not found when calling: setCloudEnabledForApp");
+	ERR_FAIL_COND_MSG(SteamRemoteStorage() == nullptr, "[STEAM] Remote Storage class not found when calling: setCloudEnabledForApp");
 	SteamRemoteStorage()->SetCloudEnabledForApp(enabled);
 }
 
 // Allows you to specify which operating systems a file will be synchronized to. Use this if you have a multiplatform game but have
 // data which is incompatible between platforms.
 bool Steam::setSyncPlatforms(const String &file, int platform) {
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, false, "[STEAM] Remote Storage class not found when calling: setSyncPlatforms");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, false, "[STEAM] Remote Storage class not found when calling: setSyncPlatforms");
 	return SteamRemoteStorage()->SetSyncPlatforms(file.utf8().get_data(), (ERemoteStoragePlatform)platform);
 }
 
 // Downloads a UGC file.  A priority value of 0 will download the file immediately, otherwise it will wait to download the file
 // until all downloads with a lower priority value are completed.  Downloads with equal priority will occur simultaneously.
 void Steam::ugcDownload(uint64_t content, uint32 priority) {
-	ERR_FAIL_COND_MSG(SteamRemoteStorage() == NULL, "[STEAM] Remote Storage class not found when calling: ugcDownload");
+	ERR_FAIL_COND_MSG(SteamRemoteStorage() == nullptr, "[STEAM] Remote Storage class not found when calling: ugcDownload");
 	SteamAPICall_t api_call = SteamRemoteStorage()->UGCDownload((UGCHandle_t)content, priority);
 	callResultDownloadUGCResult.Set(api_call, this, &Steam::download_ugc_result);
 }
 
 // Downloads a UGC file to a specific location.
 void Steam::ugcDownloadToLocation(uint64_t content, const String &location, uint32 priority) {
-	ERR_FAIL_COND_MSG(SteamRemoteStorage() == NULL, "[STEAM] Remote Storage class not found when calling: ugcDownloadToLocation");
+	ERR_FAIL_COND_MSG(SteamRemoteStorage() == nullptr, "[STEAM] Remote Storage class not found when calling: ugcDownloadToLocation");
 	SteamAPICall_t api_call = SteamRemoteStorage()->UGCDownloadToLocation((UGCHandle_t)content, location.utf8().get_data(), priority);
 	callResultDownloadUGCResult.Set(api_call, this, &Steam::download_ugc_result);
 }
@@ -5320,7 +5340,7 @@ void Steam::ugcDownloadToLocation(uint64_t content, const String &location, uint
 // After download, gets the content of the file.
 PackedByteArray Steam::ugcRead(uint64_t content, int32 data_size, uint32 offset, UGCReadAction action) {
 	PackedByteArray file_contents;
-	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == NULL, file_contents, "[STEAM] Remote Storage class not found when calling: setSyncPlatforms");
+	ERR_FAIL_COND_V_MSG(SteamRemoteStorage() == nullptr, file_contents, "[STEAM] Remote Storage class not found when calling: setSyncPlatforms");
 	file_contents.resize(data_size);
 	SteamRemoteStorage()->UGCRead((UGCHandle_t)content, file_contents.ptrw(), data_size, offset, (EUGCReadAction)action);
 	return file_contents;
@@ -5331,38 +5351,38 @@ PackedByteArray Steam::ugcRead(uint64_t content, int32 data_size, uint32 offset,
 
 // Adds a screenshot to the user's Steam screenshot library from disk.
 uint32_t Steam::addScreenshotToLibrary(const String &filename, const String &thumbnail_filename, int width, int height) {
-	ERR_FAIL_COND_V_MSG(SteamScreenshots() == NULL, 0, "[STEAM] Screenshots class not found when calling: addScreenshotToLibrary");
+	ERR_FAIL_COND_V_MSG(SteamScreenshots() == nullptr, 0, "[STEAM] Screenshots class not found when calling: addScreenshotToLibrary");
 	return SteamScreenshots()->AddScreenshotToLibrary(filename.utf8().get_data(), thumbnail_filename.utf8().get_data(), width, height);
 }
 
 // Adds a VR screenshot to the user's Steam screenshot library from disk in the supported type.
 uint32_t Steam::addVRScreenshotToLibrary(VRScreenshotType type, const String &filename, const String &vr_filename) {
-	ERR_FAIL_COND_V_MSG(SteamScreenshots() == NULL, 0, "[STEAM] Screenshots class not found when calling: addVRScreenshotToLibrary");
+	ERR_FAIL_COND_V_MSG(SteamScreenshots() == nullptr, 0, "[STEAM] Screenshots class not found when calling: addVRScreenshotToLibrary");
 	return SteamScreenshots()->AddVRScreenshotToLibrary((EVRScreenshotType)type, filename.utf8().get_data(), vr_filename.utf8().get_data());
 }
 
 // Toggles whether the overlay handles screenshots.
 void Steam::hookScreenshots(bool hook) {
-	ERR_FAIL_COND_MSG(SteamScreenshots() == NULL, "[STEAM] Screenshots class not found when calling: hookScreenshots");
+	ERR_FAIL_COND_MSG(SteamScreenshots() == nullptr, "[STEAM] Screenshots class not found when calling: hookScreenshots");
 	SteamScreenshots()->HookScreenshots(hook);
 }
 
 // Checks if the app is hooking screenshots.
 bool Steam::isScreenshotsHooked() {
-	ERR_FAIL_COND_V_MSG(SteamScreenshots() == NULL, false, "[STEAM] Screenshots class not found when calling: isScreenshotsHooked");
+	ERR_FAIL_COND_V_MSG(SteamScreenshots() == nullptr, false, "[STEAM] Screenshots class not found when calling: isScreenshotsHooked");
 	return SteamScreenshots()->IsScreenshotsHooked();
 }
 
 // Sets optional metadata about a screenshot's location.
 bool Steam::setLocation(uint32_t screenshot, const String &location) {
-	ERR_FAIL_COND_V_MSG(SteamScreenshots() == NULL, false, "[STEAM] Screenshots class not found when calling: setLocation");
+	ERR_FAIL_COND_V_MSG(SteamScreenshots() == nullptr, false, "[STEAM] Screenshots class not found when calling: setLocation");
 	ScreenshotHandle handle = (ScreenshotHandle)screenshot;
 	return SteamScreenshots()->SetLocation(handle, location.utf8().get_data());
 }
 
 // Tags a published file as being visible in the screenshot.
 bool Steam::tagPublishedFile(uint32_t screenshot, uint64_t file_id) {
-	ERR_FAIL_COND_V_MSG(SteamScreenshots() == NULL, false, "[STEAM] Screenshots class not found when calling: tagPublishedFile");
+	ERR_FAIL_COND_V_MSG(SteamScreenshots() == nullptr, false, "[STEAM] Screenshots class not found when calling: tagPublishedFile");
 	PublishedFileId_t file = (uint64)file_id;
 	return SteamScreenshots()->TagPublishedFile((ScreenshotHandle)screenshot, file);
 }
@@ -5373,20 +5393,20 @@ bool Steam::tagPublishedFile(uint32_t screenshot, uint64_t file_id) {
 // successfully saved from the ScreenshotReady_t callback or via the WriteScreenshot, AddScreenshotToLibrary,
 // AddVRScreenshotToLibrary calls.
 bool Steam::tagUser(uint32 screenshot, uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamScreenshots() == NULL, false, "[STEAM] Screenshots class not found when calling: tagUser");
+	ERR_FAIL_COND_V_MSG(SteamScreenshots() == nullptr, false, "[STEAM] Screenshots class not found when calling: tagUser");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamScreenshots()->TagUser((ScreenshotHandle)screenshot, user_id);
 }
 
 // Causes Steam overlay to take a screenshot.
 void Steam::triggerScreenshot() {
-	ERR_FAIL_COND_MSG(SteamScreenshots() == NULL, "[STEAM] Screenshots class not found when calling: triggerScreenshot");
+	ERR_FAIL_COND_MSG(SteamScreenshots() == nullptr, "[STEAM] Screenshots class not found when calling: triggerScreenshot");
 	SteamScreenshots()->TriggerScreenshot();
 }
 
 // Writes a screenshot to the user's Steam screenshot library.
 uint32_t Steam::writeScreenshot(const PackedByteArray &rgb, int width, int height) {
-	ERR_FAIL_COND_V_MSG(SteamScreenshots() == NULL, 0, "[STEAM] Screenshots class not found when calling: writeScreenshot");
+	ERR_FAIL_COND_V_MSG(SteamScreenshots() == nullptr, 0, "[STEAM] Screenshots class not found when calling: writeScreenshot");
 	return SteamScreenshots()->WriteScreenshot((void *)rgb.ptr(), rgb.size(), width, height);
 }
 
@@ -5395,31 +5415,31 @@ uint32_t Steam::writeScreenshot(const PackedByteArray &rgb, int width, int heigh
 
 // Add a tag that applies to the entire phase.
 void Steam::addGamePhaseTag(const String &tag_name, const String &tag_icon, const String &tag_group, uint32 priority ){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: addGamePhaseTag");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: addGamePhaseTag");
 	SteamTimeline()->AddGamePhaseTag(tag_name.utf8().get_data(), tag_icon.utf8().get_data(), tag_group.utf8().get_data(), priority);
 }
 
 // Use this to mark an event (A) on the Timeline. This event will be instantaneous. (See addRangeTimelineEvent to add events that happened over time.)
 uint64_t Steam::addInstantaneousTimelineEvent(const String &title, const String &description, const String &icon, uint32 icon_priority, float start_offset_seconds, TimelineEventClipPriority possible_clip){
-	ERR_FAIL_COND_V_MSG(SteamTimeline() == NULL, 0, "[STEAM] Timeline class not found when calling: addInstantaneousTimelineEvent");
+	ERR_FAIL_COND_V_MSG(SteamTimeline() == nullptr, 0, "[STEAM] Timeline class not found when calling: addInstantaneousTimelineEvent");
 	return SteamTimeline()->AddInstantaneousTimelineEvent(title.utf8().get_data(), description.utf8().get_data(), icon.utf8().get_data(), icon_priority, start_offset_seconds, (ETimelineEventClipPriority)possible_clip);
 }
 
 // Use this to mark an event (A) on the Timeline that takes some amount of time to complete.
 uint64_t Steam::addRangeTimelineEvent(const String &title, const String &description, const String &icon, uint32 icon_priority, float start_offset_seconds, float duration, TimelineEventClipPriority possible_clip){
-	ERR_FAIL_COND_V_MSG(SteamTimeline() == NULL, 0, "[STEAM] Timeline class not found when calling: addRangeTimelineEvent");
+	ERR_FAIL_COND_V_MSG(SteamTimeline() == nullptr, 0, "[STEAM] Timeline class not found when calling: addRangeTimelineEvent");
 	return (uint64_t)SteamTimeline()->AddRangeTimelineEvent(title.utf8().get_data(), description.utf8().get_data(), icon.utf8().get_data(), icon_priority, start_offset_seconds, duration, (ETimelineEventClipPriority)possible_clip);
 }
 
 // Removes the description set for the specific clip.
 void Steam::clearTimelineTooltip(float time_delta) {
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: clearTimelineTooltip");
-	SteamTimeline()->ClearTimelineTooltip(time_delta);		
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: clearTimelineTooltip");
+	SteamTimeline()->ClearTimelineTooltip(time_delta);
 }
 
 // Add a tag to whatever time range is represented by the event.
 void Steam::doesEventRecordingExist(uint64_t this_event){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: doesEventRecordingExist");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: doesEventRecordingExist");
 	SteamAPICall_t api_call = SteamTimeline()->DoesEventRecordingExist(this_event);
 	callResultTimelineEvenRecordingExists.Set(api_call, this, &Steam::timeline_event_recording_exists);
 }
@@ -5427,32 +5447,32 @@ void Steam::doesEventRecordingExist(uint64_t this_event){
 // Use this to determine if video recordings exist for the specified game phase. Steam will sent a timeline_game_phase_recording_exists callback with the result.
 // This can be useful when the game needs to decide whether or not to show a control that will call openOverlayToGamePhase.
 void Steam::doesGamePhaseRecordingExist(const String &phase_id){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: doesGamePhaseRecordingExist");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: doesGamePhaseRecordingExist");
 	SteamAPICall_t api_call = SteamTimeline()->DoesGamePhaseRecordingExist(phase_id.utf8().get_data());
 	callResultTimelineGamePhaseRecordingExists.Set(api_call, this, &Steam::timeline_game_phase_recording_exists);
 }
 
 // Use this to end a game phase that was started with startGamePhase.
 void Steam::endGamePhase(){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: endGamePhase");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: endGamePhase");
 	SteamTimeline()->EndGamePhase();
 }
 
 // Ends a range timeline event and shows it in the UI.
 void Steam::endRangeTimelineEvent(uint64_t this_event, float end_offset_seconds){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: endRangeTimelineEvent");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: endRangeTimelineEvent");
 	SteamTimeline()->EndRangeTimelineEvent(this_event, end_offset_seconds);
 }
 
 // Opens the Steam overlay to a game phase.
 void Steam::openOverlayToGamePhase(const String &phase_id){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: openOverlayToGamePhase");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: openOverlayToGamePhase");
 	SteamTimeline()->OpenOverlayToGamePhase(phase_id.utf8().get_data());
 }
 
 // Opens the Steam overlay to a timeline event.
 void Steam::openOverlayToTimelineEvent(const uint64_t this_event){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: openOverlayToTimelineEvent");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: openOverlayToTimelineEvent");
 	SteamTimeline()->OpenOverlayToTimelineEvent(this_event);
 }
 
@@ -5460,32 +5480,32 @@ void Steam::openOverlayToTimelineEvent(const uint64_t this_event){
 // AddRangeTimelineEvent, or StartRangeTimelineEvent/EndRangeTimelineEvent. The timeline event handle must be from the
 // current game process.
 void Steam::removeTimelineEvent(uint64_t this_event){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: removeTimelineEvent");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: removeTimelineEvent");
 	SteamTimeline()->RemoveTimelineEvent(this_event);
 }
 
 // Add a text attribute that applies to the entire phase.
 void Steam::setGamePhaseAttribute(const String &attribute_group, const String &attribute_value, uint32 priority){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: setGamePhaseAttribute");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: setGamePhaseAttribute");
 	SteamTimeline()->SetGamePhaseAttribute(attribute_group.utf8().get_data(), attribute_value.utf8().get_data(), priority);
 }
 
 // Games can set a phase ID so they can refer back to a phase in OpenOverlayToPhase.
 void Steam::setGamePhaseID(const String &phase_id){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: setGamePhaseID");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: setGamePhaseID");
 	SteamTimeline()->SetGamePhaseID(phase_id.utf8().get_data());
 }
 
 // Changes the color of the timeline bar. See ETimelineGameMode comments for how to use each value
 void Steam::setTimelineGameMode(TimelineGameMode mode){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: setTimelineGameMode");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: setTimelineGameMode");
 	SteamTimeline()->SetTimelineGameMode((ETimelineGameMode)mode);
 }
 
 // Sets a description for the current game state in the timeline. These help the user to find specific
 // moments in the timeline when saving clips. Setting a new state description replaces any previous description.
 void Steam::setTimelineTooltip(String description, float time_delta){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: setTimelineTooltip");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: setTimelineTooltip");
 	SteamTimeline()->SetTimelineTooltip(description.utf8().get_data(), time_delta);
 }
 
@@ -5493,20 +5513,20 @@ void Steam::setTimelineTooltip(String description, float time_delta){
 // should be a section of gameplay that is usually between 10 minutes and a few hours in length, and should be the main way a user would think to divide up the game. These are presented to
 // the user in a UI that shows the date the game was played, with one row per game slice. Game phases should be used to mark sections of gameplay that the user might be interested in watching.
 void Steam::startGamePhase(){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: startGamePhase");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: startGamePhase");
 	SteamTimeline()->StartGamePhase();
 }
 
 // Starts a timeline event at a the current time, plus an offset in seconds. This event must be ended with EndRangeTimelineEvent.
 // Any timeline events that have not been ended when the game exits will be discarded.
 uint64_t Steam::startRangeTimelineEvent(const String &title, const String &description, const String &icon, uint32 priority, float start_offset_seconds, TimelineEventClipPriority possible_clip){
-	ERR_FAIL_COND_V_MSG(SteamTimeline() == NULL, 0, "[STEAM] Timeline class not found when calling: startRangeTimelineEvent");
+	ERR_FAIL_COND_V_MSG(SteamTimeline() == nullptr, 0, "[STEAM] Timeline class not found when calling: startRangeTimelineEvent");
 	return (uint64_t)SteamTimeline()->StartRangeTimelineEvent(title.utf8().get_data(), description.utf8().get_data(), icon.utf8().get_data(), priority, start_offset_seconds, (ETimelineEventClipPriority)possible_clip);
 }
 
 // Updates fields on a range timeline event that was started with StartRangeTimelineEvent, and which has not been ended.
 void Steam::updateRangeTimelineEvent(uint64_t this_event, const String &title, const String &description, const String &icon, uint32 priority, TimelineEventClipPriority possible_clip){
-	ERR_FAIL_COND_MSG(SteamTimeline() == NULL, "[STEAM] Timeline class not found when calling: updateRangeTimelineEvent");
+	ERR_FAIL_COND_MSG(SteamTimeline() == nullptr, "[STEAM] Timeline class not found when calling: updateRangeTimelineEvent");
 	SteamTimeline()->UpdateRangeTimelineEvent(this_event, title.utf8().get_data(), description.utf8().get_data(), icon.utf8().get_data(), priority, (ETimelineEventClipPriority)possible_clip);
 }
 
@@ -5517,13 +5537,13 @@ void Steam::updateRangeTimelineEvent(uint64_t this_event, const String &title, c
 // This is a soft-dependency that is displayed on the web. It is up to the application to determine whether the item can actually
 // be used or not.
 void Steam::addAppDependency(uint64_t published_file_id, uint32_t app_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: addAppDependency");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: addAppDependency");
 	SteamAPICall_t api_call = SteamUGC()->AddAppDependency((PublishedFileId_t)published_file_id, (AppId_t)app_id);
 	callResultAddAppDependency.Set(api_call, this, &Steam::add_app_dependency_result);
 }
 
 bool Steam::addContentDescriptor(uint64_t update_handle, int descriptor_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: addContentDescriptor");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: addContentDescriptor");
 	return SteamUGC()->AddContentDescriptor((UGCUpdateHandle_t)update_handle, (EUGCContentDescriptorID)descriptor_id);
 }
 
@@ -5532,38 +5552,38 @@ bool Steam::addContentDescriptor(uint64_t update_handle, int descriptor_id) {
 // Otherwise, the dependency is a soft one that is displayed on the web and can be retrieved via the ISteamUGC API using a
 // combination of the m_unNumChildren member variable of the SteamUGCDetails_t struct and GetQueryUGCChildren.
 void Steam::addDependency(uint64_t published_file_id, uint64_t child_published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: addDependency");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: addDependency");
 	SteamAPICall_t api_call = SteamUGC()->AddDependency((PublishedFileId_t)published_file_id, (PublishedFileId_t)child_published_file_id);
 	callResultAddUGCDependency.Set(api_call, this, &Steam::add_ugc_dependency_result);
 }
 
 // Adds a excluded tag to a pending UGC Query. This will only return UGC without the specified tag.
 bool Steam::addExcludedTag(uint64_t query_handle, const String &tag_name) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: addExcludedTag");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: addExcludedTag");
 	return SteamUGC()->AddExcludedTag((UGCQueryHandle_t)query_handle, tag_name.utf8().get_data());
 }
 
 // Adds a key-value tag pair to an item. Keys can map to multiple different values (1-to-many relationship).
 bool Steam::addItemKeyValueTag(uint64_t update_handle, const String &key, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: addItemKeyValueTag");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: addItemKeyValueTag");
 	return SteamUGC()->AddItemKeyValueTag((UGCUpdateHandle_t)update_handle, key.utf8().get_data(), value.utf8().get_data());
 }
 
 // Adds an additional preview file for the item.
 bool Steam::addItemPreviewFile(uint64_t update_handle, const String &preview_file, ItemPreviewType type) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: addItemPreviewFile");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: addItemPreviewFile");
 	return SteamUGC()->AddItemPreviewFile((UGCUpdateHandle_t)update_handle, preview_file.utf8().get_data(), (EItemPreviewType)type);
 }
 
 // Adds an additional video preview from YouTube for the item.
 bool Steam::addItemPreviewVideo(uint64_t update_handle, const String &video_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: addItemPreviewVideo");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: addItemPreviewVideo");
 	return SteamUGC()->AddItemPreviewVideo((UGCUpdateHandle_t)update_handle, video_id.utf8().get_data());
 }
 
 // Adds a workshop item to the users favorites list.
 void Steam::addItemToFavorites(uint32_t app_id, uint64_t published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: addItemToFavorites");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: addItemToFavorites");
 	AppId_t app = (uint32_t)app_id;
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->AddItemToFavorites(app, file_id);
@@ -5573,13 +5593,13 @@ void Steam::addItemToFavorites(uint32_t app_id, uint64_t published_file_id) {
 // Adds a required key-value tag to a pending UGC Query. This will only return workshop items that have a key = pKey and a
 // value = pValue.
 bool Steam::addRequiredKeyValueTag(uint64_t query_handle, const String &key, const String &value) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: addRequiredKeyValueTag");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: addRequiredKeyValueTag");
 	return SteamUGC()->AddRequiredKeyValueTag((UGCQueryHandle_t)query_handle, key.utf8().get_data(), value.utf8().get_data());
 }
 
 // Adds a required tag to a pending UGC Query. This will only return UGC with the specified tag.
 bool Steam::addRequiredTag(uint64_t query_handle, const String &tag_name) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: addRequiredTag");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: addRequiredTag");
 	return SteamUGC()->AddRequiredTag((UGCQueryHandle_t)query_handle, tag_name.utf8().get_data());
 }
 
@@ -5587,27 +5607,36 @@ bool Steam::addRequiredTag(uint64_t query_handle, const String &tag_name) {
 // "or"). For each tag group that is added, at least one tag from each group is required to be on the matching items.
 bool Steam::addRequiredTagGroup(uint64_t query_handle, Array tag_array) {
 	bool added_tag_group = false;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, added_tag_group, "[STEAM] UGC class not found when calling: addRequiredTagGroup");
-	UGCQueryHandle_t handle = uint64(query_handle);
-	std::vector<CharString> string_store(tag_array.size());
-	std::vector<const char *> strings(tag_array.size());
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, added_tag_group, "[STEAM] UGC class not found when calling: addRequiredTagGroup");
+
+	UGCQueryHandle_t handle = static_cast<UGCQueryHandle_t>(query_handle);
 	uint32 str_count = tag_array.size();
+
+	Vector<CharString> string_store;
+	string_store.resize(str_count);
+
+	Vector<const char *> strings;
+	strings.resize(str_count);
+
 	for (uint32 i = 0; i < str_count; i++) {
 		String str = tag_array[i];
-		string_store[i] = str.utf8();
-		strings[i] = string_store[i].get_data();
+		string_store.write[i] = str.utf8();
+		strings.write[i] = string_store[i].get_data();
 	}
+
 	SteamParamStringArray_t tag;
-	tag.m_nNumStrings = strings.size();
-	tag.m_ppStrings = strings.data();
+	tag.m_nNumStrings = str_count;
+	tag.m_ppStrings = strings.ptrw();
+
 	added_tag_group = SteamUGC()->AddRequiredTagGroup(handle, &tag);
 	return added_tag_group;
 }
 
+
 // Lets game servers set a specific workshop folder before issuing any UGC commands.
 bool Steam::initWorkshopForGameServer(uint32_t workshop_depot_id, String folder) {
 	bool initialized_workshop = false;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, initialized_workshop, "[STEAM] UGC class not found when calling: initWorkshopForGameServer");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, initialized_workshop, "[STEAM] UGC class not found when calling: initWorkshopForGameServer");
 	DepotId_t workshop = (uint32_t)workshop_depot_id;
 	initialized_workshop = SteamUGC()->BInitWorkshopForGameServer(workshop, folder.utf8().get_data());
 	return initialized_workshop;
@@ -5615,14 +5644,14 @@ bool Steam::initWorkshopForGameServer(uint32_t workshop_depot_id, String folder)
 
 // Creates a new workshop item with no content attached yet.
 void Steam::createItem(uint32 app_id, WorkshopFileType file_type) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: createItem");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: createItem");
 	SteamAPICall_t api_call = SteamUGC()->CreateItem((AppId_t)app_id, (EWorkshopFileType)file_type);
 	callResultItemCreate.Set(api_call, this, &Steam::item_created);
 }
 
 // Query for all matching UGC. You can use this to list all of the available UGC for your app.
 uint64_t Steam::createQueryAllUGCRequest(UGCQuery query_type, UGCMatchingUGCType matching_type, uint32_t creator_id, uint32_t consumer_id, uint32 page) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: createQueryAllUGCRequest");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: createQueryAllUGCRequest");
 	AppId_t creator = (uint32_t)creator_id;
 	AppId_t consumer = (uint32_t)consumer_id;
 	UGCQueryHandle_t handle = SteamUGC()->CreateQueryAllUGCRequest((EUGCQuery)query_type, (EUGCMatchingUGCType)matching_type, creator, consumer, page);
@@ -5632,7 +5661,7 @@ uint64_t Steam::createQueryAllUGCRequest(UGCQuery query_type, UGCMatchingUGCType
 // Query for the details of specific workshop items.
 uint64_t Steam::createQueryUGCDetailsRequest(Array published_file_ids) {
 	uint64_t this_handle = 0;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, this_handle, "[STEAM] UGC class not found when calling: createQueryUGCDetailsRequest");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, this_handle, "[STEAM] UGC class not found when calling: createQueryUGCDetailsRequest");
 	uint32 file_count = published_file_ids.size();
 	if (file_count != 0) {
 		PublishedFileId_t *file_ids = new PublishedFileId_t[file_count];
@@ -5648,7 +5677,7 @@ uint64_t Steam::createQueryUGCDetailsRequest(Array published_file_ids) {
 
 // Query UGC associated with a user. You can use this to list the UGC the user is subscribed to amongst other things.
 uint64_t Steam::createQueryUserUGCRequest(uint64_t steam_id, UserUGCList list_type, UGCMatchingUGCType matching_ugc_type, UserUGCListSortOrder sort_order, uint32_t creator_id, uint32_t consumer_id, uint32 page) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: createQueryUGCDetailsRequest");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: createQueryUGCDetailsRequest");
 	// Get tue universe ID from the Steam ID
 	CSteamID user_id = (uint64)steam_id;
 	AccountID_t account = (AccountID_t)user_id.ConvertToUint64();
@@ -5660,7 +5689,7 @@ uint64_t Steam::createQueryUserUGCRequest(uint64_t steam_id, UserUGCList list_ty
 
 // Deletes the item without prompting the user.
 void Steam::deleteItem(uint64_t published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: deleteItem");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: deleteItem");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->DeleteItem(file_id);
 	callResultDeleteItem.Set(api_call, this, &Steam::item_deleted);
@@ -5671,14 +5700,14 @@ void Steam::deleteItem(uint64_t published_file_id) {
 // If item is not subscribed to, it will be cached for some time. If bHighPriority is set, any other item download will be
 // suspended and this item downloaded ASAP.
 bool Steam::downloadItem(uint64_t published_file_id, bool high_priority) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: downloadItem");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: downloadItem");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	return SteamUGC()->DownloadItem(file_id, high_priority);
 }
 
 // Returns any app dependencies that are associated with the given item.
 void Steam::getAppDependencies(uint64_t published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: getAppDependencies");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: getAppDependencies");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->GetAppDependencies(file_id);
 	callResultGetAppDependencies.Set(api_call, this, &Steam::get_app_dependencies_result);
@@ -5687,7 +5716,7 @@ void Steam::getAppDependencies(uint64_t published_file_id) {
 // Get info about a pending download of a workshop item that has k_EItemStateNeedsUpdate set.
 Dictionary Steam::getItemDownloadInfo(uint64_t published_file_id) {
 	Dictionary info;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, info, "[STEAM] UGC class not found when calling: getItemDownloadInfo");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, info, "[STEAM] UGC class not found when calling: getItemDownloadInfo");
 	uint64 downloaded = 0;
 	uint64 total = 0;
 	info["ret"] = SteamUGC()->GetItemDownloadInfo((PublishedFileId_t)published_file_id, &downloaded, &total);
@@ -5702,7 +5731,7 @@ Dictionary Steam::getItemDownloadInfo(uint64_t published_file_id) {
 Dictionary Steam::getItemInstallInfo(uint64_t published_file_id) {
 	Dictionary info;
 	info["ret"] = false;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, info, "[STEAM] UGC class not found when calling: getItemInstallInfo");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, info, "[STEAM] UGC class not found when calling: getItemInstallInfo");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	uint64 size_on_disk;
 	char folder[1024] = { 0 };
@@ -5718,7 +5747,7 @@ Dictionary Steam::getItemInstallInfo(uint64_t published_file_id) {
 
 // Gets the current state of a workshop item on this client.
 uint32 Steam::getItemState(uint64_t published_file_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: getItemState");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: getItemState");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	return SteamUGC()->GetItemState(file_id);
 }
@@ -5726,7 +5755,7 @@ uint32 Steam::getItemState(uint64_t published_file_id) {
 // Gets the progress of an item update.
 Dictionary Steam::getItemUpdateProgress(uint64_t update_handle) {
 	Dictionary update_progress;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, update_progress, "[STEAM] UGC class not found when calling: getItemUpdateProgress");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, update_progress, "[STEAM] UGC class not found when calling: getItemUpdateProgress");
 	UGCUpdateHandle_t handle = (uint64_t)update_handle;
 	uint64 processed = 0;
 	uint64 total = 0;
@@ -5739,13 +5768,13 @@ Dictionary Steam::getItemUpdateProgress(uint64_t update_handle) {
 
 // Gets the total number of items the current user is subscribed to for the game or application.
 uint32 Steam::getNumSubscribedItems(bool include_locally_disabled) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: getNumSubscribedItems");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: getNumSubscribedItems");
 	return SteamUGC()->GetNumSubscribedItems(include_locally_disabled);
 }
 
 // Get the number of supported game versions for this UGC content.
 uint32 Steam::getNumSupportedGameVersions(uint64_t query_handle, uint32 index) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: getNumSupportedGameVersions");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: getNumSupportedGameVersions");
 	return SteamUGC()->GetNumSupportedGameVersions((UGCQueryHandle_t)query_handle, index);
 }
 
@@ -5753,7 +5782,7 @@ uint32 Steam::getNumSupportedGameVersions(uint64_t query_handle, uint32 index) {
 // result.
 Dictionary Steam::getQueryUGCAdditionalPreview(uint64_t query_handle, uint32 index, uint32 preview_index) {
 	Dictionary preview;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, preview, "[STEAM] UGC class not found when calling: getQueryUGCAdditionalPreview");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, preview, "[STEAM] UGC class not found when calling: getQueryUGCAdditionalPreview");
 	char url_or_video_id[256 + 1]{};
 	char original_filename[256 + 1]{};
 	EItemPreviewType previewType;
@@ -5774,7 +5803,7 @@ Dictionary Steam::getQueryUGCAdditionalPreview(uint64_t query_handle, uint32 ind
 // either be a part of a collection or some other dependency (see AddDependency).
 Dictionary Steam::getQueryUGCChildren(uint64_t query_handle, uint32 index, uint32_t child_count) {
 	Dictionary children;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, children, "[STEAM] UGC class not found when calling: getQueryUGCChildren");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, children, "[STEAM] UGC class not found when calling: getQueryUGCChildren");
 	PackedVector2Array vec;
 	vec.resize(child_count);
 	bool success = SteamUGC()->GetQueryUGCChildren((UGCQueryHandle_t)query_handle, index, (PublishedFileId_t *)vec.ptrw(), child_count);
@@ -5795,7 +5824,7 @@ Dictionary Steam::getQueryUGCChildren(uint64_t query_handle, uint32 index, uint3
 
 Dictionary Steam::getQueryUGCContentDescriptors(uint64_t query_handle, uint32 index, uint32_t max_entries) {
 	Dictionary descriptors;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, descriptors, "[STEAM] UGC class not found when calling: getQueryUGCContentDescriptors");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, descriptors, "[STEAM] UGC class not found when calling: getQueryUGCContentDescriptors");
 	PackedVector2Array vec;
 	vec.resize(max_entries);
 	uint32_t result = SteamUGC()->GetQueryUGCContentDescriptors((UGCQueryHandle_t)query_handle, index, (EUGCContentDescriptorID *)vec.ptrw(), max_entries);
@@ -5814,7 +5843,7 @@ Dictionary Steam::getQueryUGCContentDescriptors(uint64_t query_handle, uint32 in
 // Retrieve the details of a key-value tag associated with an individual workshop item after receiving a querying UGC call result.
 Dictionary Steam::getQueryUGCKeyValueTag(uint64_t query_handle, uint32 index, uint32 key_value_tag_index) {
 	Dictionary tag;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, tag, "[STEAM] UGC class not found when calling: getQueryUGCKeyValueTag");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, tag, "[STEAM] UGC class not found when calling: getQueryUGCKeyValueTag");
 	char key[256 + 1]{};
 	char value[256 + 1]{};
 	bool success = SteamUGC()->GetQueryUGCKeyValueTag((UGCQueryHandle_t)query_handle, index, key_value_tag_index, key, 256, value, 256);
@@ -5832,7 +5861,7 @@ Dictionary Steam::getQueryUGCKeyValueTag(uint64_t query_handle, uint32 index, ui
 // Retrieve the developer set metadata of an individual workshop item after receiving a querying UGC call result.
 String Steam::getQueryUGCMetadata(uint64_t query_handle, uint32 index) {
 	String query_ugc_metadata = "";
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, query_ugc_metadata, "[STEAM] UGC class not found when calling: getQueryUGCMetadata");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, query_ugc_metadata, "[STEAM] UGC class not found when calling: getQueryUGCMetadata");
 	char ugc_metadata[5000 + 1]{};
 	bool success = SteamUGC()->GetQueryUGCMetadata((UGCQueryHandle_t)query_handle, index, ugc_metadata, 5000);
 	if (success) {
@@ -5843,27 +5872,27 @@ String Steam::getQueryUGCMetadata(uint64_t query_handle, uint32 index) {
 
 // Retrieve the number of additional previews of an individual workshop item after receiving a querying UGC call result.
 uint32 Steam::getQueryUGCNumAdditionalPreviews(uint64_t query_handle, uint32 index) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: getQueryUGCNumAdditionalPreviews");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: getQueryUGCNumAdditionalPreviews");
 	return SteamUGC()->GetQueryUGCNumAdditionalPreviews((UGCQueryHandle_t)query_handle, index);
 }
 
 // Retrieve the number of key-value tags of an individual workshop item after receiving a querying UGC call result.
 uint32 Steam::getQueryUGCNumKeyValueTags(uint64_t query_handle, uint32 index) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: getQueryUGCNumKeyValueTags");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: getQueryUGCNumKeyValueTags");
 	return SteamUGC()->GetQueryUGCNumKeyValueTags((UGCQueryHandle_t)query_handle, index);
 }
 
 // Retrieve the number of tags for an individual workshop item after receiving a querying UGC call result. You should call this in
 // a loop to get the details of all the workshop items returned.
 uint32 Steam::getQueryUGCNumTags(uint64_t query_handle, uint32 index) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: getQueryUGCNumTags");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: getQueryUGCNumTags");
 	return SteamUGC()->GetQueryUGCNumTags((UGCQueryHandle_t)query_handle, index);
 }
 
 // Retrieve the URL to the preview image of an individual workshop item after receiving a querying UGC call result.
 String Steam::getQueryUGCPreviewURL(uint64_t query_handle, uint32 index) {
 	String query_ugc_preview_url = "";
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, query_ugc_preview_url, "[STEAM] UGC class not found when calling: getQueryUGCPreviewURL");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, query_ugc_preview_url, "[STEAM] UGC class not found when calling: getQueryUGCPreviewURL");
 	char url[256 + 1]{};
 	bool success = SteamUGC()->GetQueryUGCPreviewURL((UGCQueryHandle_t)query_handle, index, url, 256);
 	if (success) {
@@ -5875,7 +5904,7 @@ String Steam::getQueryUGCPreviewURL(uint64_t query_handle, uint32 index) {
 // Retrieve the details of an individual workshop item after receiving a querying UGC call result.
 Dictionary Steam::getQueryUGCResult(uint64_t query_handle, uint32 index) {
 	Dictionary ugc_result;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, ugc_result, "[STEAM] UGC class not found when calling: getQueryUGCResult");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, ugc_result, "[STEAM] UGC class not found when calling: getQueryUGCResult");
 	SteamUGCDetails_t query_details;
 	bool success = SteamUGC()->GetQueryUGCResult((UGCQueryHandle_t)query_handle, index, &query_details);
 	if (success) {
@@ -5913,7 +5942,7 @@ Dictionary Steam::getQueryUGCResult(uint64_t query_handle, uint32 index) {
 // Retrieve various statistics of an individual workshop item after receiving a querying UGC call result.
 Dictionary Steam::getQueryUGCStatistic(uint64_t query_handle, uint32 index, ItemStatistic stat_type) {
 	Dictionary ugc_stat;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, ugc_stat, "[STEAM] UGC class not found when calling: getQueryUGCStatistic");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, ugc_stat, "[STEAM] UGC class not found when calling: getQueryUGCStatistic");
 	uint64 value = 0;
 	bool success = SteamUGC()->GetQueryUGCStatistic((UGCQueryHandle_t)query_handle, index, (EItemStatistic)stat_type, &value);
 	if (success) {
@@ -5929,7 +5958,7 @@ Dictionary Steam::getQueryUGCStatistic(uint64_t query_handle, uint32 index, Item
 // Retrieve the "nth" tag associated with an individual workshop item after receiving a querying UGC call result.
 // You should call this in a loop to get the details of all the workshop items returned.
 String Steam::getQueryUGCTag(uint64_t query_handle, uint32 index, uint32 tag_index) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, "", "[STEAM] UGC class not found when calling: getQueryUGCTag");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, "", "[STEAM] UGC class not found when calling: getQueryUGCTag");
 	char tag[64 + 1]{};
 	SteamUGC()->GetQueryUGCTag((UGCQueryHandle_t)query_handle, index, tag_index, tag, 64);
 	return tag;
@@ -5939,7 +5968,7 @@ String Steam::getQueryUGCTag(uint64_t query_handle, uint32 index, uint32 tag_ind
 // receiving a querying UGC call result.
 // You should call this in a loop to get the details of all the workshop items returned.
 String Steam::getQueryUGCTagDisplayName(uint64_t query_handle, uint32 index, uint32 tag_index) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, "", "[STEAM] UGC class not found when calling: getQueryUGCTagDisplayName");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, "", "[STEAM] UGC class not found when calling: getQueryUGCTagDisplayName");
 	char tag[256 + 1]{};
 	SteamUGC()->GetQueryUGCTagDisplayName((UGCQueryHandle_t)query_handle, index, tag_index, tag, 256);
 	return tag;
@@ -5947,7 +5976,7 @@ String Steam::getQueryUGCTagDisplayName(uint64_t query_handle, uint32 index, uin
 
 // Gets a list of all of the items the current user is subscribed to for the current game.
 Array Steam::getSubscribedItems(bool include_locally_disabled) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, Array(), "[STEAM] UGC class not found when calling: getSubscribedItems");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, Array(), "[STEAM] UGC class not found when calling: getSubscribedItems");
 	Array subscribed;
 	uint32 num_items = SteamUGC()->GetNumSubscribedItems(include_locally_disabled);
 	PublishedFileId_t *items = new PublishedFileId_t[num_items];
@@ -5962,7 +5991,7 @@ Array Steam::getSubscribedItems(bool include_locally_disabled) {
 // Some items can specify that they have a version that is valid for a range of game versions (Steam branch).
 Dictionary Steam::getSupportedGameVersionData(uint64_t query_handle, uint32 index, uint32 version_index) {
 	Dictionary supported_version;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, supported_version, "[STEAM] UGC class not found when calling: getSupportedGameVersionData");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, supported_version, "[STEAM] UGC class not found when calling: getSupportedGameVersionData");
 	char branch_min[STEAM_BUFFER_SIZE];
 	char branch_max[STEAM_BUFFER_SIZE];
 	uint32 branch_size = 0;
@@ -5978,7 +6007,7 @@ Dictionary Steam::getSupportedGameVersionData(uint64_t query_handle, uint32 inde
 // Information is unclear how this actually works so here goes nothing!
 Array Steam::getUserContentDescriptorPreferences(uint32 max_entries) {
 	Array descriptors;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, descriptors, "[STEAM] UGC class not found when calling: getUserContentDescriptorPreferences");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, descriptors, "[STEAM] UGC class not found when calling: getUserContentDescriptorPreferences");
 	EUGCContentDescriptorID *descriptor_list = new EUGCContentDescriptorID[max_entries];
 	uint32 num_descriptors = SteamUGC()->GetUserContentDescriptorPreferences(descriptor_list, max_entries);
 	for (uint32 i = 0; i < num_descriptors; i++) {
@@ -5989,7 +6018,7 @@ Array Steam::getUserContentDescriptorPreferences(uint32 max_entries) {
 
 // Gets the users vote status on a workshop item.
 void Steam::getUserItemVote(uint64_t published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: getUserItemVote");	
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: getUserItemVote");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->GetUserItemVote(file_id);
 	callResultGetUserItemVote.Set(api_call, this, &Steam::get_item_vote_result);
@@ -5997,21 +6026,21 @@ void Steam::getUserItemVote(uint64_t published_file_id) {
 
 // Retrieve information related to the user's acceptance or not of the app's specific Workshop EULA.
 void Steam::getWorkshopEULAStatus() {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: subscribeItem");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: subscribeItem");
 	SteamAPICall_t api_call = SteamUGC()->GetWorkshopEULAStatus();
 	callResultWorkshopEULAStatus.Set(api_call, this, &Steam::workshop_eula_status);
 }
 
 // Releases a UGC query handle when you are done with it to free up memory.
 bool Steam::releaseQueryUGCRequest(uint64_t query_handle) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: releaseQueryUGCRequest");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: releaseQueryUGCRequest");
 	return SteamUGC()->ReleaseQueryUGCRequest((UGCQueryHandle_t)query_handle);
 }
 
 // Removes the dependency between the given item and the appid. This list of dependencies can be retrieved by calling
 // GetAppDependencies.
 void Steam::removeAppDependency(uint64_t published_file_id, uint32_t app_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: removeAppDependency");	
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: removeAppDependency");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	AppId_t app = (uint32_t)app_id;
 	SteamAPICall_t api_call = SteamUGC()->RemoveAppDependency(file_id, app);
@@ -6019,13 +6048,13 @@ void Steam::removeAppDependency(uint64_t published_file_id, uint32_t app_id) {
 }
 
 bool Steam::removeContentDescriptor(uint64_t update_handle, int descriptor_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: removeContentDescriptor");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: removeContentDescriptor");
 	return SteamUGC()->RemoveContentDescriptor((UGCUpdateHandle_t)update_handle, (EUGCContentDescriptorID)descriptor_id);
 }
 
 // Removes a workshop item as a dependency from the specified item.
 void Steam::removeDependency(uint64_t published_file_id, uint64_t child_published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: removeDependency");	
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: removeDependency");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	PublishedFileId_t childID = (uint64_t)child_published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->RemoveDependency(file_id, childID);
@@ -6034,7 +6063,7 @@ void Steam::removeDependency(uint64_t published_file_id, uint64_t child_publishe
 
 // Removes a workshop item from the users favorites list.
 void Steam::removeItemFromFavorites(uint32_t app_id, uint64_t published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: removeItemFromFavorites");	
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: removeItemFromFavorites");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	AppId_t app = (uint32_t)app_id;
 	SteamAPICall_t api_call = SteamUGC()->RemoveItemFromFavorites(app, file_id);
@@ -6043,50 +6072,50 @@ void Steam::removeItemFromFavorites(uint32_t app_id, uint64_t published_file_id)
 
 // Removes an existing key value tag from an item.
 bool Steam::removeItemKeyValueTags(uint64_t update_handle, const String &key) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: removeItemKeyValueTags");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: removeItemKeyValueTags");
 	return SteamUGC()->RemoveItemKeyValueTags((UGCUpdateHandle_t)update_handle, key.utf8().get_data());
 }
 
 // Removes an existing preview from an item.
 bool Steam::removeItemPreview(uint64_t update_handle, uint32 index) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: removeItemPreview");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: removeItemPreview");
 	return SteamUGC()->RemoveItemPreview((UGCUpdateHandle_t)update_handle, index);
 }
 
 // Send a UGC query to Steam.
 void Steam::sendQueryUGCRequest(uint64_t update_handle) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: sendQueryUGCRequest");	
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: sendQueryUGCRequest");
 	SteamAPICall_t api_call = SteamUGC()->SendQueryUGCRequest((UGCUpdateHandle_t)update_handle);
 	callResultUGCQueryCompleted.Set(api_call, this, &Steam::ugc_query_completed);
 }
 
 // Admin queries return hidden items.
 bool Steam::setAdminQuery(uint64_t update_handle, bool admin_query) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setAdminQuery");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setAdminQuery");
 	return SteamUGC()->SetAdminQuery((UGCUpdateHandle_t)update_handle, admin_query);
 }
 
 // Sets whether results will be returned from the cache for the specific period of time on a pending UGC Query.
 bool Steam::setAllowCachedResponse(uint64_t update_handle, uint32 max_age_seconds) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setAllowCachedResponse");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setAllowCachedResponse");
 	return SteamUGC()->SetAllowCachedResponse((UGCUpdateHandle_t)update_handle, max_age_seconds);
 }
 
 // Sets to only return items that have a specific filename on a pending UGC Query.
 bool Steam::setCloudFileNameFilter(uint64_t update_handle, const String &match_cloud_filename) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setCloudFileNameFilter");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setCloudFileNameFilter");
 	return SteamUGC()->SetCloudFileNameFilter((UGCUpdateHandle_t)update_handle, match_cloud_filename.utf8().get_data());
 }
 
 // Sets the folder that will be stored as the content for an item.
 bool Steam::setItemContent(uint64_t update_handle, const String &content_folder) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemContent");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemContent");
 	return SteamUGC()->SetItemContent((UGCUpdateHandle_t)update_handle, content_folder.utf8().get_data());
 }
 
 // Sets a new description for an item.
 bool Steam::setItemDescription(uint64_t update_handle, const String &description) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemDescription");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemDescription");
 	if ((uint32_t)description.length() > (uint32_t)k_cchPublishedDocumentDescriptionMax) {
 		printf("Description cannot have more than %d ASCII characters. Description not set.", k_cchPublishedDocumentDescriptionMax);
 		return false;
@@ -6097,7 +6126,7 @@ bool Steam::setItemDescription(uint64_t update_handle, const String &description
 // Sets arbitrary metadata for an item. This metadata can be returned from queries without having to download and install the
 // actual content.
 bool Steam::setItemMetadata(uint64_t update_handle, const String &ugc_metadata) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemMetadata");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemMetadata");
 	if (ugc_metadata.utf8().length() > 5000) {
 		printf("Metadata cannot be more than %d bytes. Metadata not set.", 5000);
 	}
@@ -6106,32 +6135,38 @@ bool Steam::setItemMetadata(uint64_t update_handle, const String &ugc_metadata) 
 
 // Sets the primary preview image for the item.
 bool Steam::setItemPreview(uint64_t update_handle, const String &preview_file) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemPreview");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemPreview");
 	return SteamUGC()->SetItemPreview((UGCUpdateHandle_t)update_handle, preview_file.utf8().get_data());
 }
 
 // Sets arbitrary developer specified tags on an item.
 bool Steam::setItemTags(uint64_t update_handle, Array tag_array, bool allow_admin_tags) {
-	bool tags_set = false;
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemTags");
-	std::vector<CharString> string_store(tag_array.size());
-	std::vector<const char *> strings(tag_array.size());
-	uint32 str_count = tag_array.size();
-	for (uint32 i = 0; i < str_count; i++) {
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemTags");
+
+	const int count = tag_array.size();
+	Vector<CharString> string_store;
+	Vector<const char *> string_ptrs;
+
+	string_store.resize(count);
+	string_ptrs.resize(count);
+
+	for (int i = 0; i < count; i++) {
 		String str = tag_array[i];
-		string_store[i] = str.utf8();
-		strings[i] = string_store[i].get_data();
+		string_store.write[i] = str.utf8();
+		string_ptrs.write[i] = string_store[i].get_data();
 	}
+
 	SteamParamStringArray_t tag;
-	tag.m_nNumStrings = strings.size();
-	tag.m_ppStrings = strings.data();
-	tags_set = SteamUGC()->SetItemTags((UGCUpdateHandle_t)update_handle, &tag, allow_admin_tags);
-	return tags_set;
+	tag.m_nNumStrings = count;
+	tag.m_ppStrings = string_ptrs.ptrw();
+
+	return SteamUGC()->SetItemTags(static_cast<UGCUpdateHandle_t>(update_handle), &tag, allow_admin_tags);
 }
+
 
 // Sets a new title for an item.
 bool Steam::setItemTitle(uint64_t update_handle, const String &title) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemTitle");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemTitle");
 	if (title.length() > 255) {
 		printf("Title cannot have more than %d ASCII characters. Title not set.", 255);
 		return false;
@@ -6141,19 +6176,19 @@ bool Steam::setItemTitle(uint64_t update_handle, const String &title) {
 
 // Sets the language of the title and description that will be set in this item update.
 bool Steam::setItemUpdateLanguage(uint64_t update_handle, const String &language) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemUpdateLanguage");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemUpdateLanguage");
 	return SteamUGC()->SetItemUpdateLanguage((UGCUpdateHandle_t)update_handle, language.utf8().get_data());
 }
 
 // Sets the visibility of an item.
 bool Steam::setItemVisibility(uint64_t update_handle, RemoteStoragePublishedFileVisibility visibility) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemVisibility");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemVisibility");
 	return SteamUGC()->SetItemVisibility((UGCUpdateHandle_t)update_handle, (ERemoteStoragePublishedFileVisibility)visibility);
 }
 
 // Sets whether the item should be disabled locally or not. This means that it will not be returned in getSubscribedItems() by default.
 bool Steam::setItemsDisabledLocally(PackedInt64Array published_file_ids, bool disabled_locally) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setItemsDisabledLocally");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setItemsDisabledLocally");
 
 	uint32 file_count = published_file_ids.size();
 	PublishedFileId_t *file_ids = new PublishedFileId_t[file_count];
@@ -6165,87 +6200,87 @@ bool Steam::setItemsDisabledLocally(PackedInt64Array published_file_ids, bool di
 
 // Sets the language to return the title and description in for the items on a pending UGC Query.
 bool Steam::setLanguage(uint64_t query_handle, const String &language) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setLanguage");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setLanguage");
 	return SteamUGC()->SetLanguage((UGCQueryHandle_t)query_handle, language.utf8().get_data());
 }
 
 // Sets whether workshop items will be returned if they have one or more matching tag, or if all tags need to match on a pending
 // UGC Query.
 bool Steam::setMatchAnyTag(uint64_t query_handle, bool match_any_tag) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setMatchAnyTag");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setMatchAnyTag");
 	return SteamUGC()->SetMatchAnyTag((UGCQueryHandle_t)query_handle, match_any_tag);
 }
 
 // Sets whether the order of the results will be updated based on the rank of items over a number of days on a pending UGC Query.
 bool Steam::setRankedByTrendDays(uint64_t query_handle, uint32 days) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setRankedByTrendDays");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setRankedByTrendDays");
 	return SteamUGC()->SetRankedByTrendDays((UGCQueryHandle_t)query_handle, days);
 }
 
 // An empty string for either parameter means that it will match any version on that end of the range. This will only be applied
 // if the actual content has been changed.
 bool Steam::setRequiredGameVersions(uint64_t query_handle, String game_branch_min, String game_branch_max) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setRequiredGameVersions");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setRequiredGameVersions");
 	return SteamUGC()->SetRequiredGameVersions((UGCQueryHandle_t)query_handle, game_branch_min.utf8().get_data(), game_branch_max.utf8().get_data());
 }
 
 // Sets whether to return any additional images/videos attached to the items on a pending UGC Query.
 bool Steam::setReturnAdditionalPreviews(uint64_t query_handle, bool return_additional_previews) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnAdditionalPreviews");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnAdditionalPreviews");
 	return SteamUGC()->SetReturnAdditionalPreviews((UGCQueryHandle_t)query_handle, return_additional_previews);
 }
 
 // Sets whether to return the IDs of the child items of the items on a pending UGC Query.
 bool Steam::setReturnChildren(uint64_t query_handle, bool return_children) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnChildren");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnChildren");
 	return SteamUGC()->SetReturnChildren((UGCQueryHandle_t)query_handle, return_children);
 }
 
 // Sets whether to return any key-value tags for the items on a pending UGC Query.
 bool Steam::setReturnKeyValueTags(uint64_t query_handle, bool return_key_value_tags) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnKeyValueTags");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnKeyValueTags");
 	return SteamUGC()->SetReturnKeyValueTags((UGCQueryHandle_t)query_handle, return_key_value_tags);
 }
 
 // Sets whether to return the full description for the items on a pending UGC Query.
 bool Steam::setReturnLongDescription(uint64_t query_handle, bool return_long_description) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnLongDescription");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnLongDescription");
 	return SteamUGC()->SetReturnLongDescription((UGCQueryHandle_t)query_handle, return_long_description);
 }
 
 // Sets whether to return the developer specified metadata for the items on a pending UGC Query.
 bool Steam::setReturnMetadata(uint64_t query_handle, bool return_metadata) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnMetadata");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnMetadata");
 	return SteamUGC()->SetReturnMetadata((UGCQueryHandle_t)query_handle, return_metadata);
 }
 
 // Sets whether to only return IDs instead of all the details on a pending UGC Query.
 bool Steam::setReturnOnlyIDs(uint64_t query_handle, bool return_only_ids) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnOnlyIDs");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnOnlyIDs");
 	return SteamUGC()->SetReturnOnlyIDs((UGCQueryHandle_t)query_handle, return_only_ids);
 }
 
 // Sets whether to return the the playtime stats on a pending UGC Query.
 bool Steam::setReturnPlaytimeStats(uint64_t query_handle, uint32 days) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnPlaytimeStats");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnPlaytimeStats");
 	return SteamUGC()->SetReturnPlaytimeStats((UGCQueryHandle_t)query_handle, days);
 }
 
 // Sets whether to only return the the total number of matching items on a pending UGC Query.
 bool Steam::setReturnTotalOnly(uint64_t query_handle, bool return_total_only) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setReturnTotalOnly");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setReturnTotalOnly");
 	return SteamUGC()->SetReturnTotalOnly((UGCQueryHandle_t)query_handle, return_total_only);
 }
 
 // Sets a string to that items need to match in either the title or the description on a pending UGC Query.
 bool Steam::setSearchText(uint64_t query_handle, const String &search_text) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setSearchText");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setSearchText");
 	return SteamUGC()->SetSearchText((UGCQueryHandle_t)query_handle, search_text.utf8().get_data());
 }
 
 // Set the local load order for these items. If there are any items not in the given list, they will sort by the time subscribed.
 bool Steam::setSubscriptionsLoadOrder(PackedInt64Array published_file_ids) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setSubscriptionsLoadOrder");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setSubscriptionsLoadOrder");
 	uint32 file_count = published_file_ids.size();
 	PublishedFileId_t *file_ids = new PublishedFileId_t[file_count];
 	for (uint32_t i = 0; i < file_count; i++) {
@@ -6256,19 +6291,19 @@ bool Steam::setSubscriptionsLoadOrder(PackedInt64Array published_file_ids) {
 
 // Set the time range this item was created.
 bool Steam::setTimeCreatedDateRange(uint64_t update_handle, uint32 start, uint32 end) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setTimeCreatedDateRange");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setTimeCreatedDateRange");
 	return SteamUGC()->SetTimeCreatedDateRange((UGCUpdateHandle_t)update_handle, start, end);
 }
 
 // Set the time range this item was updated.
 bool Steam::setTimeUpdatedDateRange(uint64_t update_handle, uint32 start, uint32 end) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: setTimeUpdatedDateRange");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: setTimeUpdatedDateRange");
 	return SteamUGC()->SetTimeUpdatedDateRange((UGCUpdateHandle_t)update_handle, start, end);
 }
 
 // Allows the user to rate a workshop item up or down.
 void Steam::setUserItemVote(uint64_t published_file_id, bool vote_up) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: setUserItemVote");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: setUserItemVote");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->SetUserItemVote(file_id, vote_up);
 	callResultSetUserItemVote.Set(api_call, this, &Steam::set_user_item_vote);
@@ -6276,13 +6311,13 @@ void Steam::setUserItemVote(uint64_t published_file_id, bool vote_up) {
 
 // Show the app's latest Workshop EULA to the user in an overlay window, where they can accept it or not.
 bool Steam::showWorkshopEULA() {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: showWorkshopEULA");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: showWorkshopEULA");
 	return SteamUGC()->ShowWorkshopEULA();
 }
 
 // Starts the item update process.
 uint64_t Steam::startItemUpdate(uint32_t app_id, uint64_t published_file_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, 0, "[STEAM] UGC class not found when calling: startItemUpdate");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, 0, "[STEAM] UGC class not found when calling: startItemUpdate");
 	AppId_t app = (uint32_t)app_id;
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	return SteamUGC()->StartItemUpdate(app, file_id);
@@ -6290,7 +6325,7 @@ uint64_t Steam::startItemUpdate(uint32_t app_id, uint64_t published_file_id) {
 
 // Start tracking playtime on a set of workshop items.
 void Steam::startPlaytimeTracking(Array published_file_ids) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: startPlaytimeTracking");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: startPlaytimeTracking");
 	uint32 file_count = published_file_ids.size();
 	if (file_count > 0) {
 		PublishedFileId_t *file_ids = new PublishedFileId_t[file_count];
@@ -6305,7 +6340,7 @@ void Steam::startPlaytimeTracking(Array published_file_ids) {
 
 // Stop tracking playtime on a set of workshop items.
 void Steam::stopPlaytimeTracking(Array published_file_ids) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: stopPlaytimeTracking");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: stopPlaytimeTracking");
 	uint32 file_count = published_file_ids.size();
 	if (file_count > 0) {
 		PublishedFileId_t *file_ids = new PublishedFileId_t[file_count];
@@ -6321,14 +6356,14 @@ void Steam::stopPlaytimeTracking(Array published_file_ids) {
 
 // Stop tracking playtime of all workshop items.
 void Steam::stopPlaytimeTrackingForAllItems() {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: stopPlaytimeTrackingForAllItems");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: stopPlaytimeTrackingForAllItems");
 	SteamAPICall_t api_call = SteamUGC()->StopPlaytimeTrackingForAllItems();
 	callResultStopPlaytimeTracking.Set(api_call, this, &Steam::stop_playtime_tracking);
 }
 
 // Uploads the changes made to an item to the Steam Workshop; to be called after setting your changes.
 void Steam::submitItemUpdate(uint64_t update_handle, const String &change_note) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: submitItemUpdate");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: submitItemUpdate");
 	SteamAPICall_t api_call;
 	if (change_note.length() == 0) {
 		api_call = SteamUGC()->SubmitItemUpdate((UGCUpdateHandle_t)update_handle, NULL);
@@ -6341,7 +6376,7 @@ void Steam::submitItemUpdate(uint64_t update_handle, const String &change_note) 
 
 // Subscribe to a workshop item. It will be downloaded and installed as soon as possible.
 void Steam::subscribeItem(uint64_t published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: subscribeItem");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: subscribeItem");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->SubscribeItem(file_id);
 	callResultSubscribeItem.Set(api_call, this, &Steam::subscribe_item);
@@ -6349,13 +6384,13 @@ void Steam::subscribeItem(uint64_t published_file_id) {
 
 // SuspendDownloads( true ) will suspend all workshop downloads until SuspendDownloads( false ) is called or the game ends.
 void Steam::suspendDownloads(bool suspend) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: suspendDownloads");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: suspendDownloads");
 	SteamUGC()->SuspendDownloads(suspend);
 }
 
 // Unsubscribe from a workshop item. This will result in the item being removed after the game quits.
 void Steam::unsubscribeItem(uint64_t published_file_id) {
-	ERR_FAIL_COND_MSG(SteamUGC() == NULL, "[STEAM] UGC class not found when calling: unsubscribeItem");
+	ERR_FAIL_COND_MSG(SteamUGC() == nullptr, "[STEAM] UGC class not found when calling: unsubscribeItem");
 	PublishedFileId_t file_id = (uint64_t)published_file_id;
 	SteamAPICall_t api_call = SteamUGC()->UnsubscribeItem(file_id);
 	callResultUnsubscribeItem.Set(api_call, this, &Steam::unsubscribe_item);
@@ -6363,13 +6398,13 @@ void Steam::unsubscribeItem(uint64_t published_file_id) {
 
 // Updates an existing additional preview file for the item.
 bool Steam::updateItemPreviewFile(uint64_t update_handle, uint32 index, const String &preview_file) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: updateItemPreviewFile");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: updateItemPreviewFile");
 	return SteamUGC()->UpdateItemPreviewFile((UGCUpdateHandle_t)update_handle, index, preview_file.utf8().get_data());
 }
 
 // Updates an additional video preview from YouTube for the item.
 bool Steam::updateItemPreviewVideo(uint64_t update_handle, uint32 index, const String &video_id) {
-	ERR_FAIL_COND_V_MSG(SteamUGC() == NULL, false, "[STEAM] UGC class not found when calling: updateItemPreviewVideo");
+	ERR_FAIL_COND_V_MSG(SteamUGC() == nullptr, false, "[STEAM] UGC class not found when calling: updateItemPreviewVideo");
 	return SteamUGC()->UpdateItemPreviewVideo((UGCUpdateHandle_t)update_handle, index, video_id.utf8().get_data());
 }
 
@@ -6379,28 +6414,28 @@ bool Steam::updateItemPreviewVideo(uint64_t update_handle, uint32 index, const S
 // Set the rich presence data for an unsecured game server that the user is playing on. This allows friends to be able to view the
 // game info and join your game.
 void Steam::advertiseGame(const String &server_ip, int port) {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: advertiseGame");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: advertiseGame");
 	CSteamID game_server_id = SteamUser()->GetSteamID();
 	SteamUser()->AdvertiseGame(game_server_id, getIPFromString(server_ip), port);
 }
 
 // Authenticate the ticket from the entity Steam ID to be sure it is valid and isn't reused.
 BeginAuthSessionResult Steam::beginAuthSession(PackedByteArray ticket, int ticket_size, uint64_t steam_id) {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, BeginAuthSessionResult(-1), "[STEAM] User class not found when calling: beginAuthSession");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, BeginAuthSessionResult(-1), "[STEAM] User class not found when calling: beginAuthSession");
 	CSteamID auth_steam_id = createSteamID(steam_id);
 	return BeginAuthSessionResult(SteamUser()->BeginAuthSession(ticket.ptr(), ticket_size, auth_steam_id));
 }
 
 // Cancels an auth ticket.
 void Steam::cancelAuthTicket(uint32_t auth_ticket) {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: cancelAuthTicket");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: cancelAuthTicket");
 	SteamUser()->CancelAuthTicket(auth_ticket);
 }
 
 // Decodes the compressed voice data returned by GetVoice.
 Dictionary Steam::decompressVoice(const PackedByteArray &voice, uint32 sample_rate, uint32 buffer_size_override) {
 	Dictionary decompressed;
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, decompressed, "[STEAM] User class not found when calling: decompressVoice");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, decompressed, "[STEAM] User class not found when calling: decompressVoice");
 	uint32 written = 0;
 	PackedByteArray output_buffer;
 	output_buffer.resize(buffer_size_override);
@@ -6414,7 +6449,7 @@ Dictionary Steam::decompressVoice(const PackedByteArray &voice, uint32 sample_ra
 
 // Ends an auth session.
 void Steam::endAuthSession(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: endAuthSession");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: endAuthSession");
 	CSteamID auth_steam_id = createSteamID(steam_id);
 	SteamUser()->EndAuthSession(auth_steam_id);
 }
@@ -6422,7 +6457,7 @@ void Steam::endAuthSession(uint64_t steam_id) {
 // Get the authentication ticket data.
 Dictionary Steam::getAuthSessionTicket(uint64_t remote_steam_id) {
 	Dictionary auth_ticket;
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, auth_ticket, "[STEAM] User class not found when calling: getAuthSessionTicket");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, auth_ticket, "[STEAM] User class not found when calling: getAuthSessionTicket");
 	uint32_t id = 0;
 	uint32_t ticket_size = 1024;
 	PackedByteArray buffer;
@@ -6443,7 +6478,7 @@ Dictionary Steam::getAuthSessionTicket(uint64_t remote_steam_id) {
 // Request a ticket which will be used for webapi "ISteamUserAuth\AuthenticateUserTicket" pchIdentity is an optional input
 // parameter to identify the service the ticket will be sent to the ticket will be returned in callback GetTicketForWebApiResponse_t
 uint32 Steam::getAuthTicketForWebApi(const String &service_identity) {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, 0, "[STEAM] User class not found when calling: getAuthTicketForWebApi");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, 0, "[STEAM] User class not found when calling: getAuthTicketForWebApi");
 	if (service_identity != "") {
 		return SteamUser()->GetAuthTicketForWebApi(service_identity.utf8().get_data());
 	}
@@ -6455,10 +6490,10 @@ uint32 Steam::getAuthTicketForWebApi(const String &service_identity) {
 // Checks to see if there is captured audio data available from GetVoice, and gets the size of the data.
 Dictionary Steam::getAvailableVoice() {
 	Dictionary voice_data;
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, voice_data, "[STEAM] User class not found when calling: getAvailableVoice");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, voice_data, "[STEAM] User class not found when calling: getAvailableVoice");
 	uint32 bytes_available = 0;
 	int result = SteamUser()->GetAvailableVoice(&bytes_available, NULL, 0);
-	
+
 	voice_data["result"] = result;
 	voice_data["buffer"] = bytes_available;
 	return voice_data;
@@ -6466,7 +6501,7 @@ Dictionary Steam::getAvailableVoice() {
 
 // Dictionary Steam::getDecompressedVoice(uint32 buffer_in_size_override, uint32 buffer_out_size_override, uint32 sample_rate_override) {
 // 	Dictionary voice_data;
-// 	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, voice_data, "[STEAM] User class not found when calling: getDecompressedVoice");
+// 	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, voice_data, "[STEAM] User class not found when calling: getDecompressedVoice");
 // 	uint32 buffer_size = buffer_in_size_override;
 // 	if (buffer_size == 0) {
 // 		SteamUser()->GetAvailableVoice(&buffer_size);
@@ -6485,7 +6520,7 @@ Dictionary Steam::getAvailableVoice() {
 // 	PackedByteArray output_buffer;
 // 	output_buffer.resize(buffer_out_size_override);
 
-// 	uint32 output_written = 0;		
+// 	uint32 output_written = 0;
 // 	int result = SteamUser()->DecompressVoice(buffer, compressed_written, output_buffer.ptrw(), output_buffer.size(), &output_written, sample_rate);
 // 	if (result == k_EVoiceResultBufferTooSmall) {
 // 		output_buffer.resize(output_written);
@@ -6502,7 +6537,7 @@ Dictionary Steam::getAvailableVoice() {
 
 // Retrieves anti indulgence / duration control for current user / game combination.
 void Steam::getDurationControl() {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: getDurationControl");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: getDurationControl");
 	SteamAPICall_t api_call = SteamUser()->GetDurationControl();
 	callResultDurationControl.Set(api_call, this, &Steam::duration_control);
 }
@@ -6511,7 +6546,7 @@ void Steam::getDurationControl() {
 // receiving the EncryptedAppTicketResponse_t call result.
 Dictionary Steam::getEncryptedAppTicket() {
 	Dictionary encrypted;
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, encrypted, "[STEAM] User class not found when calling: getEncryptedAppTicket");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, encrypted, "[STEAM] User class not found when calling: getEncryptedAppTicket");
 	uint32_t ticket_size = 1024;
 	PackedByteArray buffer;
 	buffer.resize(ticket_size);
@@ -6525,19 +6560,19 @@ Dictionary Steam::getEncryptedAppTicket() {
 // Trading Card badges data access, if you only have one set of cards, the series will be 1.
 // The user has can have two different badges for a series; the regular (max level 5) and the foil (max level 1).
 int Steam::getGameBadgeLevel(int series, bool foil) {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, 0, "[STEAM] User class not found when calling: getGameBadgeLevel");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, 0, "[STEAM] User class not found when calling: getGameBadgeLevel");
 	return SteamUser()->GetGameBadgeLevel(series, foil);
 }
 
 // Get the user's Steam level.
 int Steam::getPlayerSteamLevel() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, 0, "[STEAM] User class not found when calling: getPlayerSteamLevel");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, 0, "[STEAM] User class not found when calling: getPlayerSteamLevel");
 	return SteamUser()->GetPlayerSteamLevel();
 }
 
 // Get user's Steam ID.
 uint64_t Steam::getSteamID() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, 0, "[STEAM] User class not found when calling: getSteamID");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, 0, "[STEAM] User class not found when calling: getSteamID");
 	CSteamID steam_id = SteamUser()->GetSteamID();
 	return steam_id.ConvertToUint64();
 }
@@ -6545,10 +6580,10 @@ uint64_t Steam::getSteamID() {
 // Read captured audio data from the microphone buffer.
 Dictionary Steam::getVoice(uint32 buffer_size_override) {
 	Dictionary voice_data;
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, voice_data, "[STEAM] User class not found when calling: getVoice");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, voice_data, "[STEAM] User class not found when calling: getVoice");
 	uint32 buffer_size = buffer_size_override;
 	if (buffer_size == 0) {
-		SteamUser()->GetAvailableVoice(&buffer_size);			
+		SteamUser()->GetAvailableVoice(&buffer_size);
 	}
 
 	PackedByteArray buffer = PackedByteArray();
@@ -6566,7 +6601,7 @@ Dictionary Steam::getVoice(uint32 buffer_size_override) {
 
 // Gets the native sample rate of the Steam voice decoder.
 uint32 Steam::getVoiceOptimalSampleRate() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, 0, "[STEAM] User class not found when calling: getVoiceOptimalSampleRate");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, 0, "[STEAM] User class not found when calling: getVoiceOptimalSampleRate");
 	return SteamUser()->GetVoiceOptimalSampleRate();
 }
 
@@ -6574,7 +6609,7 @@ uint32 Steam::getVoiceOptimalSampleRate() {
 // handshake between the client, the game server, and the steam servers.
 Dictionary Steam::initiateGameConnection(uint64_t server_id, String server_ip, uint16 server_port, bool secure) {
 	Dictionary connection;
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, connection, "[STEAM] User class not found when calling: initiateGameConnection");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, connection, "[STEAM] User class not found when calling: initiateGameConnection");
 	PackedByteArray auth;
 	int auth_size = 2048;
 	auth.resize(auth_size);
@@ -6590,43 +6625,43 @@ Dictionary Steam::initiateGameConnection(uint64_t server_id, String server_ip, u
 
 // Checks if the current users looks like they are behind a NAT device.
 bool Steam::isBehindNAT() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, false, "[STEAM] User class not found when calling: isBehindNAT");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, false, "[STEAM] User class not found when calling: isBehindNAT");
 	return SteamUser()->BIsBehindNAT();
 }
 
 // Checks whether the user's phone number is used to uniquely identify them.
 bool Steam::isPhoneIdentifying() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, false, "[STEAM] User class not found when calling: isPhoneIdentifying");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, false, "[STEAM] User class not found when calling: isPhoneIdentifying");
 	return SteamUser()->BIsPhoneIdentifying();
 }
 
 // Checks whether the current user's phone number is awaiting (re)verification.
 bool Steam::isPhoneRequiringVerification() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, false, "[STEAM] User class not found when calling: isPhoneRequiringVerification");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, false, "[STEAM] User class not found when calling: isPhoneRequiringVerification");
 	return SteamUser()->BIsPhoneRequiringVerification();
 }
 
 // Checks whether the current user has verified their phone number.
 bool Steam::isPhoneVerified() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, false, "[STEAM] User class not found when calling: isPhoneVerified");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, false, "[STEAM] User class not found when calling: isPhoneVerified");
 	return SteamUser()->BIsPhoneVerified();
 }
 
 // Checks whether the current user has Steam Guard two factor authentication enabled on their account.
 bool Steam::isTwoFactorEnabled() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, false, "[STEAM] User class not found when calling: isTwoFactorEnabled");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, false, "[STEAM] User class not found when calling: isTwoFactorEnabled");
 	return SteamUser()->BIsTwoFactorEnabled();
 }
 
 // Check, true/false, if user is logged into Steam currently.
 bool Steam::loggedOn() {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, false, "[STEAM] User class not found when calling: loggedOn");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, false, "[STEAM] User class not found when calling: loggedOn");
 	return SteamUser()->BLoggedOn();
 }
 
 // Requests an application ticket encrypted with the secret "encrypted app ticket key".
 void Steam::requestEncryptedAppTicket(const String &secret) {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: requestEncryptedAppTicket");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: requestEncryptedAppTicket");
 	auto secret_utf8 = secret.utf8();
 	SteamAPICall_t api_call = SteamUser()->RequestEncryptedAppTicket((void *)secret_utf8.get_data(), secret_utf8.size());
 	callResultEncryptedAppTicketResponse.Set(api_call, this, &Steam::encrypted_app_ticket_response);
@@ -6634,40 +6669,40 @@ void Steam::requestEncryptedAppTicket(const String &secret) {
 
 // Requests a URL which authenticates an in-game browser for store check-out, and then redirects to the specified URL.
 void Steam::requestStoreAuthURL(const String &redirect) {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: requestStoreAuthURL");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: requestStoreAuthURL");
 	SteamAPICall_t api_call = SteamUser()->RequestStoreAuthURL(redirect.utf8().get_data());
 	callResultStoreAuthURLResponse.Set(api_call, this, &Steam::store_auth_url_response);
 }
 
 // Starts voice recording.
 void Steam::startVoiceRecording() {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: startVoiceRecording");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: startVoiceRecording");
 	SteamUser()->StartVoiceRecording();
 }
 
 //
 bool Steam::setDurationControlOnlineState(int new_state) {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, false, "[STEAM] User class not found when calling: setDurationControlOnlineState");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, false, "[STEAM] User class not found when calling: setDurationControlOnlineState");
 	return SteamUser()->BSetDurationControlOnlineState((EDurationControlOnlineState)new_state);
 }
 
 // Stops voice recording.
 void Steam::stopVoiceRecording() {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: stopVoiceRecording");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: stopVoiceRecording");
 	SteamUser()->StopVoiceRecording();
 }
 
 // Notify the game server that we are disconnecting. NOTE: This is part of the old user authentication API and should not be mixed
 // with the new API.
 void Steam::terminateGameConnection(String server_ip, uint16 server_port) {
-	ERR_FAIL_COND_MSG(SteamUser() == NULL, "[STEAM] User class not found when calling: terminateGameConnection");
+	ERR_FAIL_COND_MSG(SteamUser() == nullptr, "[STEAM] User class not found when calling: terminateGameConnection");
 	SteamUser()->TerminateGameConnection_DEPRECATED(getIPFromString(server_ip), server_port);
 }
 
 // Checks if the user owns a specific piece of Downloadable Content (DLC). This can only be called after sending the users auth
 // ticket to ISteamGameServer::BeginAuthSession.
 int Steam::userHasLicenseForApp(uint64_t steam_id, uint32_t app_id) {
-	ERR_FAIL_COND_V_MSG(SteamUser() == NULL, 2, "[STEAM] User class not found when calling: userHasLicenseForApp");
+	ERR_FAIL_COND_V_MSG(SteamUser() == nullptr, 2, "[STEAM] User class not found when calling: userHasLicenseForApp");
 	CSteamID user_id = (uint64)steam_id;
 	return SteamUser()->UserHasLicenseForApp(user_id, (AppId_t)app_id);
 }
@@ -6677,7 +6712,7 @@ int Steam::userHasLicenseForApp(uint64_t steam_id, uint32_t app_id) {
 
 // Attaches a piece of user generated content the current user's entry on a leaderboard.
 void Steam::attachLeaderboardUGC(uint64_t ugc_handle, uint64_t this_leaderboard) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: attachLeaderboardUGC");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: attachLeaderboardUGC");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
@@ -6687,13 +6722,13 @@ void Steam::attachLeaderboardUGC(uint64_t ugc_handle, uint64_t this_leaderboard)
 
 // Clears a given achievement.
 bool Steam::clearAchievement(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: clearAchievement");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: clearAchievement");
 	return SteamUserStats()->ClearAchievement(name.utf8().get_data());
 }
 
 // Request all rows for friends of user.
 void Steam::downloadLeaderboardEntries(int start, int end, LeaderboardDataRequest type, uint64_t this_leaderboard) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: downloadLeaderboardEntries");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: downloadLeaderboardEntries");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
@@ -6703,7 +6738,7 @@ void Steam::downloadLeaderboardEntries(int start, int end, LeaderboardDataReques
 
 // Request a maximum of 100 users with only one outstanding call at a time.
 void Steam::downloadLeaderboardEntriesForUsers(Array users_id, uint64_t this_leaderboard) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: downloadLeaderboardEntriesForUsers");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: downloadLeaderboardEntriesForUsers");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
@@ -6722,14 +6757,14 @@ void Steam::downloadLeaderboardEntriesForUsers(Array users_id, uint64_t this_lea
 
 // Find a given leaderboard, by name.
 void Steam::findLeaderboard(const String &name) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: findLeaderboard");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: findLeaderboard");
 	SteamAPICall_t api_call = SteamUserStats()->FindLeaderboard(name.utf8().get_data());
 	callResultFindLeaderboard.Set(api_call, this, &Steam::leaderboard_find_result);
 }
 
 // Gets a leaderboard by name, it will create it if it's not yet created.
 void Steam::findOrCreateLeaderboard(const String &name, LeaderboardSortMethod sort_method, LeaderboardDisplayType display_type) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: findOrCreateLeaderboard");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: findOrCreateLeaderboard");
 	SteamAPICall_t api_call = SteamUserStats()->FindOrCreateLeaderboard(name.utf8().get_data(), (ELeaderboardSortMethod)sort_method, (ELeaderboardDisplayType)display_type);
 	callResultFindLeaderboard.Set(api_call, this, &Steam::leaderboard_find_result);
 }
@@ -6737,7 +6772,7 @@ void Steam::findOrCreateLeaderboard(const String &name, LeaderboardSortMethod so
 // Return true/false if user has given achievement and the bool status of it being achieved or not.
 Dictionary Steam::getAchievement(const String &name) {
 	Dictionary achieve;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, achieve, "[STEAM] User Stats class not found when calling: getAchievement");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, achieve, "[STEAM] User Stats class not found when calling: getAchievement");
 	bool achieved = false;
 	bool achieve_exists = SteamUserStats()->GetAchievement(name.utf8().get_data(), &achieved);
 	achieve["ret"] = achieve_exists;
@@ -6748,7 +6783,7 @@ Dictionary Steam::getAchievement(const String &name) {
 // Returns the percentage of users who have unlocked the specified achievement.
 Dictionary Steam::getAchievementAchievedPercent(const String &name) {
 	Dictionary achieve;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, achieve, "[STEAM] User Stats class not found when calling: getAchievementAchievedPercent");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, achieve, "[STEAM] User Stats class not found when calling: getAchievementAchievedPercent");
 	float percent = 0.f;
 	bool achieve_exists = SteamUserStats()->GetAchievementAchievedPercent(name.utf8().get_data(), &percent);
 	achieve["ret"] = achieve_exists;
@@ -6759,7 +6794,7 @@ Dictionary Steam::getAchievementAchievedPercent(const String &name) {
 // Get the achievement status, and the time it was unlocked if unlocked (in seconds since January 1, 19).
 Dictionary Steam::getAchievementAndUnlockTime(const String &name) {
 	Dictionary achieve;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, achieve, "[STEAM] User Stats class not found when calling: getAchievementAndUnlockTime");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, achieve, "[STEAM] User Stats class not found when calling: getAchievementAndUnlockTime");
 	bool achieved = false;
 	uint32 unlock_time = 0;
 	bool achieve_exists = SteamUserStats()->GetAchievementAndUnlockTime(name.utf8().get_data(), &achieved, &unlock_time);
@@ -6771,19 +6806,19 @@ Dictionary Steam::getAchievementAndUnlockTime(const String &name) {
 
 // Get general attributes for an achievement
 String Steam::getAchievementDisplayAttribute(const String &name, const String &key) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, "", "[STEAM] User Stats class not found when calling: getAchievementDisplayAttribute");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, "", "[STEAM] User Stats class not found when calling: getAchievementDisplayAttribute");
 	return SteamUserStats()->GetAchievementDisplayAttribute(name.utf8().get_data(), key.utf8().get_data());
 }
 
 // Gets the icon for an achievement
 int Steam::getAchievementIcon(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0, "[STEAM] User Stats class not found when calling: getAchievementIcon");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0, "[STEAM] User Stats class not found when calling: getAchievementIcon");
 	return SteamUserStats()->GetAchievementIcon(name.utf8().get_data());
 }
 
 // Gets the 'API name' for an achievement index
 String Steam::getAchievementName(uint32_t achievement) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, "", "[STEAM] User Stats class not found when calling: getAchievementName");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, "", "[STEAM] User Stats class not found when calling: getAchievementName");
 	return SteamUserStats()->GetAchievementName(achievement);
 }
 
@@ -6792,7 +6827,7 @@ String Steam::getAchievementName(uint32_t achievement) {
 // notification to the user.
 Dictionary Steam::getAchievementProgressLimitsInt(const String &name) {
 	Dictionary progress;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, progress, "[STEAM] User Stats class not found when calling: getAchievementProgressLimitsInt");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, progress, "[STEAM] User Stats class not found when calling: getAchievementProgressLimitsInt");
 	int32 min = 0;
 	int32 max = 0;
 	if (SteamUserStats()->GetAchievementProgressLimits(name.utf8().get_data(), &min, &max)) {
@@ -6808,7 +6843,7 @@ Dictionary Steam::getAchievementProgressLimitsInt(const String &name) {
 // notification to the user.
 Dictionary Steam::getAchievementProgressLimitsFloat(const String &name) {
 	Dictionary progress;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, progress, "[STEAM] User Stats class not found when calling: getAchievementProgressLimitsFloat");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, progress, "[STEAM] User Stats class not found when calling: getAchievementProgressLimitsFloat");
 	float min = 0.0;
 	float max = 0.0;
 	if (SteamUserStats()->GetAchievementProgressLimits(name.utf8().get_data(), &min, &max)) {
@@ -6821,7 +6856,7 @@ Dictionary Steam::getAchievementProgressLimitsFloat(const String &name) {
 
 // Gets the lifetime totals for an aggregated stat; as an int
 uint64_t Steam::getGlobalStatInt(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0, "[STEAM] User Stats class not found when calling: getGlobalStatInt");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0, "[STEAM] User Stats class not found when calling: getGlobalStatInt");
 	int64 stat = 0;
 	SteamUserStats()->GetGlobalStat(name.utf8().get_data(), &stat);
 	return (uint64_t)stat;
@@ -6829,7 +6864,7 @@ uint64_t Steam::getGlobalStatInt(const String &name) {
 
 // Gets the lifetime totals for an aggregated stat; as an int
 double Steam::getGlobalStatFloat(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0.0, "[STEAM] User Stats class not found when calling: getGlobalStatFloat");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0.0, "[STEAM] User Stats class not found when calling: getGlobalStatFloat");
 	double stat = 0;
 	SteamUserStats()->GetGlobalStat(name.utf8().get_data(), &stat);
 	return stat;
@@ -6838,7 +6873,7 @@ double Steam::getGlobalStatFloat(const String &name) {
 // Gets the daily history for an aggregated stat; int.
 PackedInt64Array Steam::getGlobalStatIntHistory(const String &name) {
 	PackedInt64Array history_ints;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, history_ints, "[STEAM] User Stats class not found when calling: getGlobalStatIntHistory");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, history_ints, "[STEAM] User Stats class not found when calling: getGlobalStatIntHistory");
 	uint32 history_size = 0;
 	int64 *history = nullptr;
 	int32 histories = SteamUserStats()->GetGlobalStatHistory(name.utf8().get_data(), history, history_size);
@@ -6851,7 +6886,7 @@ PackedInt64Array Steam::getGlobalStatIntHistory(const String &name) {
 // Gets the daily history for an aggregated stat; float / double.
 PackedFloat64Array Steam::getGlobalStatFloatHistory(const String &name) {
 	PackedFloat64Array history_floats;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, history_floats, "[STEAM] User Stats class not found when calling: getGlobalStatFloatHistory");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, history_floats, "[STEAM] User Stats class not found when calling: getGlobalStatFloatHistory");
 	uint32 history_size = 0;
 	double *history = nullptr;
 	int32 histories = SteamUserStats()->GetGlobalStatHistory(name.utf8().get_data(), history, history_size);
@@ -6864,7 +6899,7 @@ PackedFloat64Array Steam::getGlobalStatFloatHistory(const String &name) {
 // Returns the display type of a leaderboard handle.
 Dictionary Steam::getLeaderboardDisplayType(uint64_t this_leaderboard) {
 	Dictionary display;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, display, "[STEAM] User Stats class not found when calling: getLeaderboardDisplayType");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, display, "[STEAM] User Stats class not found when calling: getLeaderboardDisplayType");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
@@ -6891,7 +6926,7 @@ Dictionary Steam::getLeaderboardDisplayType(uint64_t this_leaderboard) {
 
 // Get the total number of entries in a leaderboard, as of the last request.
 int Steam::getLeaderboardEntryCount(uint64_t this_leaderboard) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, -1, "[STEAM] User Stats class not found when calling: getLeaderboardEntryCount");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, -1, "[STEAM] User Stats class not found when calling: getLeaderboardEntryCount");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
@@ -6900,7 +6935,7 @@ int Steam::getLeaderboardEntryCount(uint64_t this_leaderboard) {
 
 // Get the name of a leaderboard.
 String Steam::getLeaderboardName(uint64_t this_leaderboard) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, "", "[STEAM] User Stats class not found when calling: getLeaderboardName");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, "", "[STEAM] User Stats class not found when calling: getLeaderboardName");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
@@ -6910,13 +6945,13 @@ String Steam::getLeaderboardName(uint64_t this_leaderboard) {
 // Returns the sort order of a leaderboard handle.
 Dictionary Steam::getLeaderboardSortMethod(uint64_t this_leaderboard) {
 	Dictionary sort;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, sort, "[STEAM] User Stats class not found when calling: getLeaderboardSortMethod");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, sort, "[STEAM] User Stats class not found when calling: getLeaderboardSortMethod");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
-	
+
 	int sort_method = SteamUserStats()->GetLeaderboardSortMethod((SteamLeaderboard_t)this_leaderboard);
-	
+
 	if (sort_method == 2) {
 		sort["result"] = 2;
 		sort["verbal"] = "Top score is highest number";
@@ -6935,7 +6970,7 @@ Dictionary Steam::getLeaderboardSortMethod(uint64_t this_leaderboard) {
 // Gets the info on the most achieved achievement for the game.
 Dictionary Steam::getMostAchievedAchievementInfo() {
 	Dictionary entry;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, entry, "[STEAM] User Stats class not found when calling: getMostAchievedAchievementInfo");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, entry, "[STEAM] User Stats class not found when calling: getMostAchievedAchievementInfo");
 	char name[64 + 1]{};
 	float percent = 0;
 	bool achieved = false;
@@ -6953,7 +6988,7 @@ Dictionary Steam::getMostAchievedAchievementInfo() {
 // Gets the info on the next most achieved achievement for the game.
 Dictionary Steam::getNextMostAchievedAchievementInfo(int iterator) {
 	Dictionary entry;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, entry, "[STEAM] User Stats class not found when calling: getNextMostAchievedAchievementInfo");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, entry, "[STEAM] User Stats class not found when calling: getNextMostAchievedAchievementInfo");
 	char name[64 + 1]{};
 	float percent = 0;
 	bool achieved = false;
@@ -6970,20 +7005,20 @@ Dictionary Steam::getNextMostAchievedAchievementInfo(int iterator) {
 
 // Get the number of achievements.
 uint32_t Steam::getNumAchievements() {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0, "[STEAM] User Stats class not found when calling: getNumAchievements");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0, "[STEAM] User Stats class not found when calling: getNumAchievements");
 	return SteamUserStats()->GetNumAchievements();
 }
 
 //  Get the amount of players currently playing the current game (online + offline).
 void Steam::getNumberOfCurrentPlayers() {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: getNumberOfCurrentPlayers");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: getNumberOfCurrentPlayers");
 	SteamAPICall_t api_call = SteamUserStats()->GetNumberOfCurrentPlayers();
 	callResultNumberOfCurrentPlayers.Set(api_call, this, &Steam::number_of_current_players);
 }
 
 // Get the value of a float statistic.
 float Steam::getStatFloat(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0.0, "[STEAM] User Stats class not found when calling: getStatFloat");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0.0, "[STEAM] User Stats class not found when calling: getStatFloat");
 	float stat_value = 0.0;
 	SteamUserStats()->GetStat(name.utf8().get_data(), &stat_value);
 	return stat_value;
@@ -6991,7 +7026,7 @@ float Steam::getStatFloat(const String &name) {
 
 // Get the value of an integer statistic.
 int Steam::getStatInt(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0, "[STEAM] User Stats class not found when calling: getStatInt");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0, "[STEAM] User Stats class not found when calling: getStatInt");
 	int32_t stat_value = 0;
 	SteamUserStats()->GetStat(name.utf8().get_data(), &stat_value);
 	return stat_value;
@@ -7000,7 +7035,7 @@ int Steam::getStatInt(const String &name) {
 // Gets the unlock status of the Achievement.
 Dictionary Steam::getUserAchievement(uint64_t steam_id, const String &name) {
 	Dictionary achieve;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, achieve, "[STEAM] User Stats class not found when calling: getUserAchievement");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, achieve, "[STEAM] User Stats class not found when calling: getUserAchievement");
 	bool achieved = false;
 	CSteamID user_id = (uint64)steam_id;
 
@@ -7017,7 +7052,7 @@ Dictionary Steam::getUserAchievement(uint64_t steam_id, const String &name) {
 // Gets the achievement status, and the time it was unlocked if unlocked.
 Dictionary Steam::getUserAchievementAndUnlockTime(uint64_t steam_id, const String &name) {
 	Dictionary achieve;
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, achieve, "[STEAM] User Stats class not found when calling: getUserAchievementAndUnlockTime");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, achieve, "[STEAM] User Stats class not found when calling: getUserAchievementAndUnlockTime");
 	bool achieved = false;
 	uint32 unlocked = 0;
 	CSteamID user_id = (uint64)steam_id;
@@ -7034,7 +7069,7 @@ Dictionary Steam::getUserAchievementAndUnlockTime(uint64_t steam_id, const Strin
 
 // Gets the current value of a float stat for the specified user.
 float Steam::getUserStatFloat(uint64_t steam_id, const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0.0, "[STEAM] User Stats class not found when calling: getUserStatFloat");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0.0, "[STEAM] User Stats class not found when calling: getUserStatFloat");
 	float stat_value = 0.0;
 	CSteamID user_id = (uint64)steam_id;
 	SteamUserStats()->GetUserStat(user_id, name.utf8().get_data(), &stat_value);
@@ -7043,7 +7078,7 @@ float Steam::getUserStatFloat(uint64_t steam_id, const String &name) {
 
 // Gets the current value of an integer stat for the specified user.
 int Steam::getUserStatInt(uint64_t steam_id, const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, 0, "[STEAM] User Stats class not found when calling: getUserStatInt");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, 0, "[STEAM] User Stats class not found when calling: getUserStatInt");
 	int32_t stat_value = 0;
 	CSteamID user_id = (uint64)steam_id;
 	SteamUserStats()->GetUserStat(user_id, name.utf8().get_data(), &stat_value);
@@ -7053,13 +7088,13 @@ int Steam::getUserStatInt(uint64_t steam_id, const String &name) {
 // Achievement progress, triggers an AchievementProgress callback, that is all.
 // Calling this with X out of X progress will NOT set the achievement, the game must still do that.
 bool Steam::indicateAchievementProgress(const String &name, int current_progress, int max_progress) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: indicateAchievementProgress");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: indicateAchievementProgress");
 	return SteamUserStats()->IndicateAchievementProgress(name.utf8().get_data(), current_progress, max_progress);
 }
 
 // Asynchronously fetch the data for the percentages.
 void Steam::requestGlobalAchievementPercentages() {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: requestGlobalAchievementPercentages");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: requestGlobalAchievementPercentages");
 	SteamAPICall_t api_call = SteamUserStats()->RequestGlobalAchievementPercentages();
 	callResultGlobalAchievementPercentagesReady.Set(api_call, this, &Steam::global_achievement_percentages_ready);
 }
@@ -7067,14 +7102,14 @@ void Steam::requestGlobalAchievementPercentages() {
 // Asynchronously fetches global stats data, which is available for stats marked as "aggregated" in the App Admin panel of the
 // Steamworks website.  The limit is 60.
 void Steam::requestGlobalStats(int history_days) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: requestGlobalStats");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: requestGlobalStats");
 	SteamAPICall_t api_call = SteamUserStats()->RequestGlobalStats(history_days);
 	callResultGlobalStatsReceived.Set(api_call, this, &Steam::global_stats_received);
 }
 
 // Asynchronously downloads stats and achievements for the specified user from the server.
 void Steam::requestUserStats(uint64_t steam_id) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: requestUserStats");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: requestUserStats");
 	CSteamID user_id = (uint64)steam_id;
 	SteamAPICall_t api_call = SteamUserStats()->RequestUserStats(user_id);
 	callResultUserStatsReceived.Set(api_call, this, &Steam::user_stats_received);
@@ -7082,43 +7117,43 @@ void Steam::requestUserStats(uint64_t steam_id) {
 
 // Reset all Steam statistics; optional to reset achievements.
 bool Steam::resetAllStats(bool achievements_too) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: resetAllStats");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: resetAllStats");
 	return SteamUserStats()->ResetAllStats(achievements_too);
 }
 
 // Set a given achievement.
 bool Steam::setAchievement(const String &name) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: setAchievement");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: setAchievement");
 	return SteamUserStats()->SetAchievement(name.utf8().get_data());
 }
 
 // Set a float statistic.
 bool Steam::setStatFloat(const String &name, float value) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: setStatFloat");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: setStatFloat");
 	return SteamUserStats()->SetStat(name.utf8().get_data(), value);
 }
 
 // Set an integer statistic.
 bool Steam::setStatInt(const String &name, int value) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: setStatInt");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: setStatInt");
 	return SteamUserStats()->SetStat(name.utf8().get_data(), value);
 }
 
 // Store all statistics, and achievements, on Steam servers; must be called to "pop" achievements.
 bool Steam::storeStats() {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: storeStats");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: storeStats");
 	return SteamUserStats()->StoreStats();
 }
 
 // Updates an AVGRATE stat with new values.
 bool Steam::updateAvgRateStat(const String &name, float this_session, double session_length) {
-	ERR_FAIL_COND_V_MSG(SteamUserStats() == NULL, false, "[STEAM] User Stats class not found when calling: updateAvgRateStat");
+	ERR_FAIL_COND_V_MSG(SteamUserStats() == nullptr, false, "[STEAM] User Stats class not found when calling: updateAvgRateStat");
 	return SteamUserStats()->UpdateAvgRateStat(name.utf8().get_data(), this_session, session_length);
 }
 
 // Upload a leaderboard score for the user.
 void Steam::uploadLeaderboardScore(int score, bool keep_best, PackedInt32Array details, uint64_t this_leaderboard) {
-	ERR_FAIL_COND_MSG(SteamUserStats() == NULL, "[STEAM] User Stats class not found when calling: uploadLeaderboardScore");
+	ERR_FAIL_COND_MSG(SteamUserStats() == nullptr, "[STEAM] User Stats class not found when calling: uploadLeaderboardScore");
 	if (this_leaderboard == 0) {
 		this_leaderboard = leaderboard_handle;
 	}
@@ -7139,27 +7174,27 @@ void Steam::uploadLeaderboardScore(int score, bool keep_best, PackedInt32Array d
 // Asynchronous call to check if an executable file has been signed using the public key set on the signing tab of the partner
 // site, for example to refuse to load modified executable files.
 void Steam::checkFileSignature(const String &filename) {
-	ERR_FAIL_COND_MSG(SteamUtils() == NULL, "[STEAM] Utils class not found when calling: checkFileSignature");
+	ERR_FAIL_COND_MSG(SteamUtils() == nullptr, "[STEAM] Utils class not found when calling: checkFileSignature");
 	SteamAPICall_t api_call = SteamUtils()->CheckFileSignature(filename.utf8().get_data());
 	callResultCheckFileSignature.Set(api_call, this, &Steam::check_file_signature);
 }
 
 // Dismisses the floating keyboard.
 bool Steam::dismissFloatingGamepadTextInput() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: dismissFloatingGamepadTextInput");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: dismissFloatingGamepadTextInput");
 	return SteamUtils()->DismissFloatingGamepadTextInput();
 }
 
 // Dismisses the full-screen text input dialog.
 bool Steam::dismissGamepadTextInput() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: dismissGamepadTextInput");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: dismissGamepadTextInput");
 	return SteamUtils()->DismissGamepadTextInput();
 }
 
 // Filters the provided input message and places the filtered result into pchOutFilteredText.
 String Steam::filterText(TextFilteringContext context, uint64_t steam_id, const String &message) {
 	String new_message = "";
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, new_message, "[STEAM] Utils class not found when calling: filterText");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, new_message, "[STEAM] Utils class not found when calling: filterText");
 	auto utf8_input = message.utf8();
 	char *filtered = new char[utf8_input.length() + 1]{};
 	CSteamID source_id = (uint64)steam_id;
@@ -7172,7 +7207,7 @@ String Steam::filterText(TextFilteringContext context, uint64_t steam_id, const 
 // Used to get the failure reason of a call result. The primary usage for this function is debugging. The failure reasons are
 // typically out of your control and tend to not be very important. Just keep retrying your API Call until it works.
 String Steam::getAPICallFailureReason() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, "", "[STEAM] Utils class not found when calling: getAPICallFailureReason");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, "", "[STEAM] Utils class not found when calling: getAPICallFailureReason");
 	int failure = SteamUtils()->GetAPICallFailureReason(api_handle);
 	if (failure == k_ESteamAPICallFailureSteamGone) {
 		return "The local Steam process has stopped responding, it may have been forcefully closed or is frozen.";
@@ -7193,26 +7228,26 @@ String Steam::getAPICallFailureReason() {
 
 // Get the Steam ID of the running application/game.
 uint32_t Steam::getAppID() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, 0, "[STEAM] Utils class not found when calling: getAppID");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, 0, "[STEAM] Utils class not found when calling: getAppID");
 	return SteamUtils()->GetAppID();
 }
 
 // The universe this client is connecting to.
 Universe Steam::getConnectedUniverse() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, UNIVERSE_INVALID,"[Steam] Utils class not found when calling: getConnectedUniverse");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, UNIVERSE_INVALID,"[Steam] Utils class not found when calling: getConnectedUniverse");
 	return Universe(SteamUtils()->GetConnectedUniverse());
 }
 
 // Get the amount of battery power, clearly for laptops.
 int Steam::getCurrentBatteryPower() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, 0, "[STEAM] Utils class not found when calling: getCurrentBatteryPower");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, 0, "[STEAM] Utils class not found when calling: getCurrentBatteryPower");
 	return SteamUtils()->GetCurrentBatteryPower();
 }
 
 // Gets the image bytes from an image handle.
 Dictionary Steam::getImageRGBA(int image) {
 	Dictionary image_data;
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, image_data, "[STEAM] Utils class not found when calling: getImageRGBA");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, image_data, "[STEAM] Utils class not found when calling: getImageRGBA");
 	uint32 width;
 	uint32 height;
 	image_data["success"] = SteamUtils()->GetImageSize(image, &width, &height);
@@ -7229,7 +7264,7 @@ Dictionary Steam::getImageRGBA(int image) {
 // Gets the size of a Steam image handle.
 Dictionary Steam::getImageSize(int image) {
 	Dictionary image_data;
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, image_data, "[STEAM] Utils class not found when calling: getImageSize");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, image_data, "[STEAM] Utils class not found when calling: getImageSize");
 	uint32 width;
 	uint32 height;
 	image_data["success"] = SteamUtils()->GetImageSize(image, &width, &height);
@@ -7240,58 +7275,58 @@ Dictionary Steam::getImageSize(int image) {
 
 // Returns the number of IPC calls made since the last time this function was called.
 uint32 Steam::getIPCCallCount() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, 0, "[STEAM] Utils class not found when calling: getIPCCallCount");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, 0, "[STEAM] Utils class not found when calling: getIPCCallCount");
 	return SteamUtils()->GetIPCCallCount();
 }
 
 // Get the user's country by IP.
 String Steam::getIPCountry() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, "", "[STEAM] Utils class not found when calling: getIPCountry");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, "", "[STEAM] Utils class not found when calling: getIPCountry");
 	return SteamUtils()->GetIPCountry();
 }
 
 // Return what we believe your current ipv6 connectivity to "the internet" is on the specified protocol.
 // This does NOT tell you if the Steam client is currently connected to Steam via ipv6.
 IPv6ConnectivityState Steam::getIPv6ConnectivityState(IPv6ConnectivityProtocol protocol) {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, IPV6_CONNECTIVITY_STATE_BAD, "[Steam] Utils class not found when calling: getIPv6ConnectivityState");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, IPV6_CONNECTIVITY_STATE_BAD, "[Steam] Utils class not found when calling: getIPv6ConnectivityState");
 	return IPv6ConnectivityState(SteamUtils()->GetIPv6ConnectivityState((ESteamIPv6ConnectivityProtocol)protocol));
 }
 
 // Return amount of time, in seconds, user has spent in this session.
 int Steam::getSecondsSinceAppActive() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, 0, "[STEAM] Utils class not found when calling: getSecondsSinceAppActive");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, 0, "[STEAM] Utils class not found when calling: getSecondsSinceAppActive");
 	return SteamUtils()->GetSecondsSinceAppActive();
 }
 
 // Returns the number of seconds since the user last moved the mouse.
 int Steam::getSecondsSinceComputerActive() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, 0, "[STEAM] Utils class not found when calling: getSecondsSinceComputerActive");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, 0, "[STEAM] Utils class not found when calling: getSecondsSinceComputerActive");
 	return SteamUtils()->GetSecondsSinceComputerActive();
 }
 
 // Get the actual time.
 int Steam::getServerRealTime() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, 0, "[STEAM] Utils class not found when calling: getServerRealTime");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, 0, "[STEAM] Utils class not found when calling: getServerRealTime");
 	return SteamUtils()->GetServerRealTime();
 }
 
 // Get the Steam user interface language.
 String Steam::getSteamUILanguage() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, "", "[STEAM] Utils class not found when calling: getSteamUILanguage");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, "", "[STEAM] Utils class not found when calling: getSteamUILanguage");
 	return SteamUtils()->GetSteamUILanguage();
 }
 
 // Initializes text filtering. Returns false if filtering is unavailable for the language the user is currently running in. If the
 // language is unsupported, the FilterText API will act as a passthrough.
 bool Steam::initFilterText() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: initFilterText");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: initFilterText");
 	return SteamUtils()->InitFilterText();
 }
 
 // Checks if an API Call is completed. Provides the backend of the CallResult wrapper.
 Dictionary Steam::isAPICallCompleted() {
 	Dictionary completed;
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, completed, "[STEAM] Utils class not found when calling: isAPICallCompleted");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, completed, "[STEAM] Utils class not found when calling: isAPICallCompleted");
 	bool failed = false;
 	completed["completed"] = SteamUtils()->IsAPICallCompleted(api_handle, &failed);
 	completed["failed"] = failed;
@@ -7300,50 +7335,50 @@ Dictionary Steam::isAPICallCompleted() {
 
 // Returns true/false if Steam overlay is enabled.
 bool Steam::isOverlayEnabled() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: isOverlayEnabled");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: isOverlayEnabled");
 	return SteamUtils()->IsOverlayEnabled();
 }
 
 // Returns whether the current launcher is a Steam China launcher. You can cause the client to behave as the Steam China launcher
 // by adding -dev -steamchina to the command line when running Steam.
 bool Steam::isSteamChinaLauncher() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: isSteamChinaLauncher");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: isSteamChinaLauncher");
 	return SteamUtils()->IsSteamChinaLauncher();
 }
 
 // Returns true if Steam & the Steam Overlay are running in Big Picture mode.
 bool Steam::isSteamInBigPictureMode() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: isSteamInBigPictureMode");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: isSteamInBigPictureMode");
 	return SteamUtils()->IsSteamInBigPictureMode();
 }
 
 // Is Steam running in VR?
 bool Steam::isSteamRunningInVR() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: isSteamRunningInVR");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: isSteamRunningInVR");
 	return SteamUtils()->IsSteamRunningInVR();
 }
 
 // Returns true if currently running on the Steam Deck device
 bool Steam::isSteamRunningOnSteamDeck() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: isSteamRunningOnSteamDeck");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: isSteamRunningOnSteamDeck");
 	return SteamUtils()->IsSteamRunningOnSteamDeck();
 }
 
 // Checks if the HMD view will be streamed via Steam In-Home Streaming.
 bool Steam::isVRHeadsetStreamingEnabled() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: isVRHeadsetStreamingEnabled");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: isVRHeadsetStreamingEnabled");
 	return SteamUtils()->IsVRHeadsetStreamingEnabled();
 }
 
 // Checks if the Overlay needs a present. Only required if using event driven render updates.
 bool Steam::overlayNeedsPresent() {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: overlayNeedsPresent");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: overlayNeedsPresent");
 	return SteamUtils()->BOverlayNeedsPresent();
 }
 
 // Activates the Big Picture text input dialog which only supports gamepad input.
 bool Steam::showGamepadTextInput(GamepadTextInputMode input_mode, GamepadTextInputLineMode line_input_mode, const String &description, uint32 max_text, const String &preset_text) {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: showGamepadTextInput");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: showGamepadTextInput");
 	return SteamUtils()->ShowGamepadTextInput((EGamepadTextInputMode)input_mode, (EGamepadTextInputLineMode)line_input_mode, description.utf8().get_data(), max_text, preset_text.utf8().get_data());
 }
 
@@ -7351,38 +7386,38 @@ bool Steam::showGamepadTextInput(GamepadTextInputMode input_mode, GamepadTextInp
 // The text field position is specified in pixels relative the origin of the game window and is used to position the floating
 // keyboard in a way that doesn't cover the text field
 bool Steam::showFloatingGamepadTextInput(FloatingGamepadTextInputMode input_mode, int text_field_x_position, int text_field_y_position, int text_field_width, int text_field_height) {
-	ERR_FAIL_COND_V_MSG(SteamUtils() == NULL, false, "[STEAM] Utils class not found when calling: showFloatingGamepadTextInput");
+	ERR_FAIL_COND_V_MSG(SteamUtils() == nullptr, false, "[STEAM] Utils class not found when calling: showFloatingGamepadTextInput");
 	return SteamUtils()->ShowFloatingGamepadTextInput((EFloatingGamepadTextInputMode)input_mode, text_field_x_position, text_field_y_position, text_field_width, text_field_height);
 }
 
 // In game launchers that don't have controller support you can call this to have Steam Input translate the controller input into
 // mouse/kb to navigate the launcher
 void Steam::setGameLauncherMode(bool mode) {
-	ERR_FAIL_COND_MSG(SteamUtils() == NULL, "[STEAM] Utils class not found when calling: setGameLauncherMode");
+	ERR_FAIL_COND_MSG(SteamUtils() == nullptr, "[STEAM] Utils class not found when calling: setGameLauncherMode");
 	SteamUtils()->SetGameLauncherMode(mode);
 }
 
 // Sets the inset of the overlay notification from the corner specified by SetOverlayNotificationPosition.
 void Steam::setOverlayNotificationInset(int horizontal, int vertical) {
-	ERR_FAIL_COND_MSG(SteamUtils() == NULL, "[STEAM] Utils class not found when calling: setOverlayNotificationInset");
+	ERR_FAIL_COND_MSG(SteamUtils() == nullptr, "[STEAM] Utils class not found when calling: setOverlayNotificationInset");
 	SteamUtils()->SetOverlayNotificationInset(horizontal, vertical);
 }
 
 // Set the position where overlay shows notifications.
 void Steam::setOverlayNotificationPosition(int pos) {
-	ERR_FAIL_COND_MSG(SteamUtils() == NULL, "[STEAM] Utils class not found when calling: setOverlayNotificationPosition");
+	ERR_FAIL_COND_MSG(SteamUtils() == nullptr, "[STEAM] Utils class not found when calling: setOverlayNotificationPosition");
 	SteamUtils()->SetOverlayNotificationPosition(ENotificationPosition(pos));
 }
 
 // Set whether the HMD content will be streamed via Steam In-Home Streaming.
 void Steam::setVRHeadsetStreamingEnabled(bool enabled) {
-	ERR_FAIL_COND_MSG(SteamUtils() == NULL, "[STEAM] Utils class not found when calling: setVRHeadsetStreamingEnabled");
+	ERR_FAIL_COND_MSG(SteamUtils() == nullptr, "[STEAM] Utils class not found when calling: setVRHeadsetStreamingEnabled");
 	SteamUtils()->SetVRHeadsetStreamingEnabled(enabled);
 }
 
 // Ask SteamUI to create and render its OpenVR dashboard.
 void Steam::startVRDashboard() {
-	ERR_FAIL_COND_MSG(SteamUtils() == NULL, "[STEAM] Utils class not found when calling: startVRDashboard");
+	ERR_FAIL_COND_MSG(SteamUtils() == nullptr, "[STEAM] Utils class not found when calling: startVRDashboard");
 	SteamUtils()->StartVRDashboard();
 }
 
@@ -7391,13 +7426,13 @@ void Steam::startVRDashboard() {
 
 // Get the OPF details for 360 video playback.
 void Steam::getOPFSettings(uint32_t app_id) {
-	ERR_FAIL_COND_MSG(SteamVideo() == NULL, "[STEAM] Video class not found when calling: getOPFSettings");
+	ERR_FAIL_COND_MSG(SteamVideo() == nullptr, "[STEAM] Video class not found when calling: getOPFSettings");
 	SteamVideo()->GetOPFSettings((AppId_t)app_id);
 }
 
 // Gets the OPF string for the specified video App ID.
 String Steam::getOPFStringForApp(uint32_t app_id) {
-	ERR_FAIL_COND_V_MSG(SteamVideo() == NULL, "", "[STEAM] Utils class not found when calling: getOPFStringForApp");
+	ERR_FAIL_COND_V_MSG(SteamVideo() == nullptr, "", "[STEAM] Utils class not found when calling: getOPFStringForApp");
 	String opf_string = "";
 	int32 size = 48000;
 	char *buffer = new char[size]{};
@@ -7410,17 +7445,17 @@ String Steam::getOPFStringForApp(uint32_t app_id) {
 
 // Asynchronously gets the URL suitable for streaming the video associated with the specified video app ID.
 void Steam::getVideoURL(uint32_t app_id) {
-	ERR_FAIL_COND_MSG(SteamVideo() == NULL, "[STEAM] Video class not found when calling: getVideoURL");
+	ERR_FAIL_COND_MSG(SteamVideo() == nullptr, "[STEAM] Video class not found when calling: getVideoURL");
 	SteamVideo()->GetVideoURL((AppId_t)app_id);
 }
 
 // Checks if the user is currently live broadcasting and gets the number of users.
 Dictionary Steam::isBroadcasting() {
 	Dictionary broadcast;
-	ERR_FAIL_COND_V_MSG(SteamVideo() == NULL, broadcast, "[STEAM] Utils class not found when calling: isBroadcasting");
+	ERR_FAIL_COND_V_MSG(SteamVideo() == nullptr, broadcast, "[STEAM] Utils class not found when calling: isBroadcasting");
 	int viewers = 0;
 	bool broadcasting = SteamVideo()->IsBroadcasting(&viewers);
-	
+
 	broadcast["broadcasting"] = broadcasting;
 	broadcast["viewers"] = viewers;
 	return broadcast;
@@ -8377,7 +8412,7 @@ void Steam::network_authentication_status(SteamNetAuthenticationStatus_t *call_d
 void Steam::network_connection_status_changed(SteamNetConnectionStatusChangedCallback_t *call_data) {
 	uint32_t connection_handle = call_data->m_hConn;
 	SteamNetConnectionInfo_t connection_info = call_data->m_info;
-	
+
 	Dictionary connection;
 	connection["identity"] = getSteamIDFromIdentity(connection_info.m_identityRemote);
 	connection["user_data"] = (uint64_t)connection_info.m_nUserData;
@@ -10617,7 +10652,7 @@ void Steam::_bind_methods() {
 	BIND_CONSTANT(SCREENSHOT_THUMB_WIDTH);
 	BIND_CONSTANT(UFS_TAG_TYPE_MAX);
 	BIND_CONSTANT(UFS_TAG_VALUE_MAX);
-	
+
 	// UGC
 	BIND_CONSTANT(DEVELOPER_METADATA_MAX);
 	BIND_CONSTANT(NUM_UGC_RESULTS_PER_PAGE);

@@ -948,7 +948,7 @@ private:
 	SteamNetworkingIPAddr getSteamIPFromInt(uint32 ip_integer);
 	SteamNetworkingIPAddr getSteamIPFromString(String ip_string);
 	String getStringFromIP(uint32 ip_address);
-	String getStringFromSteamIP(SteamNetworkingIPAddr this_address);
+	String getStringFromSteamIP(const SteamNetworkingIPAddr& this_address);
 
 	// Matchmaking Servers
 	HServerListRequest server_list_request;
